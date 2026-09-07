@@ -291,7 +291,7 @@ export class NeonAdapter implements DataAdapter {
     const query = `
       UPDATE scoring_rubric
       SET ${setClauses.join(', ')}
-      WHERE LOWER(dimension) = LOWER($1)
+      WHERE LOWER(TRIM(dimension)) = LOWER(TRIM($1))
       RETURNING id, dimension, weight::float as weight,
                 poor_description, moderate_description, strong_description,
                 created_at::text as created_at,
@@ -315,6 +315,14 @@ export class NeonAdapter implements DataAdapter {
   }
 
   public async addRubricDimension(dimension: RubricDimension): Promise<RubricDimension> {
+    const dimName = dimension.dimension.trim();
+    // Resolve existing dimension name case-insensitively if present
+    const existing = await this.pool.query(
+      `SELECT dimension FROM scoring_rubric WHERE LOWER(TRIM(dimension)) = LOWER(TRIM($1)) LIMIT 1`,
+      [dimName]
+    );
+    const resolvedName = existing.rows.length > 0 ? existing.rows[0].dimension : dimName;
+
     const query = `
       INSERT INTO scoring_rubric (dimension, weight, poor_description, moderate_description, strong_description, updated_at)
       VALUES ($1, $2, $3, $4, $5, NOW())
@@ -330,7 +338,7 @@ export class NeonAdapter implements DataAdapter {
                 updated_at::text as updated_at
     `;
     const result = await this.pool.query(query, [
-      dimension.dimension,
+      resolvedName,
       dimension.weight,
       dimension.poor_description || null,
       dimension.moderate_description || null,
@@ -350,8 +358,8 @@ export class NeonAdapter implements DataAdapter {
   }
 
   public async removeRubricDimension(dimension: string): Promise<boolean> {
-    const query = `DELETE FROM scoring_rubric WHERE LOWER(dimension) = LOWER($1)`;
-    const result = await this.pool.query(query, [dimension]);
+    const query = `DELETE FROM scoring_rubric WHERE LOWER(TRIM(dimension)) = LOWER(TRIM($1))`;
+    const result = await this.pool.query(query, [dimension.trim()]);
     return (result.rowCount ?? 0) > 0;
   }
 

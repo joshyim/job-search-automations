@@ -38,9 +38,20 @@ For any pending URL that has already been recorded, call `update_queue_status({ 
 ### 2. Fetch runtime rubric and skills via MCP
 
 1. Call MCP tool `get_scoring_rubric()` to retrieve the dynamic rubric dimensions, weights, and descriptions.
-   - Example dimensions: Title Match, Skills Match, Experience Match, Seniority Fit.
-   - Assemble rubric table and normalize weights dynamically at runtime:
-     `weight_normalized = weight / sum_of_weights * 100%`
+   - Example dimensions: Title match, Skills match, Experience match, Seniority fit.
+   - Any dimension modifications or additions in the data layer take effect immediately on the next assessment run without requiring an agent or server restart.
+   - Normalize weights dynamically at runtime to the nearest integer:
+     ```
+     sum_of_weights = sum(dimension.weight for dimension in rubric)
+     normalized_weight = round((dimension.weight / sum_of_weights) * 100)
+     ```
+   - Format the rubric into a runtime markdown table:
+     ```markdown
+     | Dimension | Raw Weight | Normalized Weight | Poor (1-2) | Moderate (3) | Strong (4-5) |
+     | --- | --- | --- | --- | --- | --- |
+     | Title match | 25 | 25% | Little to no title relevance | Partial title keyword overlap | Exact title match or target senior/lead level |
+     ...
+     ```
 2. Call MCP tool `list_skills()` to retrieve target candidate skills (P1 and P2 priority skills, categories, notes).
 3. Read `<workflowDataPath>/resume.pdf` to ground experience and skills.
 
@@ -62,10 +73,18 @@ For each pending posting, in queue order:
   ```
   Then proceed to the next posting.
 
-**Score:**
-- Evaluate posting against `<workflowDataPath>/resume.pdf` and the dynamic rubric fetched in Step 2.
+**Score (Prompt Assembly):**
+Assemble the assessment prompt dynamically:
+1. Inject `<workflowDataPath>/resume.pdf` contents and target skills from `list_skills`.
+2. Inject the runtime-formatted rubric table (with normalized integer weights and tier criteria).
+3. Inject the fetched job posting text.
+
+Prompt evaluation criteria:
+- Evaluate posting against candidate resume and the dynamically injected rubric table.
+- Dimension matching is strictly case-insensitive (`.trim().toLowerCase()`).
 - Score each dimension from 1.0 to 5.0 (poor: 1-2, moderate: 3, strong: 4-5) according to the rubric tier descriptions.
-- Calculate the final weighted score (1.0 to 5.0, rounded to one decimal place).
+- Calculate final weighted score:
+  `weighted_score = sum(dimension_score * (normalized_weight / 100))` rounded to one decimal place.
 - Generate a 1-2 sentence role synopsis summarizing fit, focus area, and standout requirements.
 
 **Record Candidate:**

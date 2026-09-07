@@ -307,11 +307,11 @@ export class LocalAdapter implements DataAdapter {
       const rawWeight = (r['Weight'] || '').replace('%', '').trim();
       const weightNum = parseFloat(rawWeight) || 0;
       return {
-        dimension: r['Dimension'] || '',
+        dimension: (r['Dimension'] || '').trim(),
         weight: weightNum,
-        poor_description: r['Poor (1-2)'] || null,
-        moderate_description: r['Moderate (3)'] || null,
-        strong_description: r['Strong (4-5)'] || null,
+        poor_description: r['Poor (1-2)'] ? r['Poor (1-2)'].trim() : null,
+        moderate_description: r['Moderate (3)'] ? r['Moderate (3)'].trim() : null,
+        strong_description: r['Strong (4-5)'] ? r['Strong (4-5)'].trim() : null,
       };
     }).filter(d => d.dimension.length > 0);
   }
@@ -321,8 +321,9 @@ export class LocalAdapter implements DataAdapter {
     const headers = ['Dimension', 'Weight', 'Poor (1-2)', 'Moderate (3)', 'Strong (4-5)'];
     const table = MarkdownTableParser.parseTable(content);
 
+    const target = dimension.trim().toLowerCase();
     const idx = table.rows.findIndex(
-      r => (r['Dimension'] || '').toLowerCase() === dimension.toLowerCase()
+      r => (r['Dimension'] || '').trim().toLowerCase() === target
     );
 
     if (idx < 0) {
@@ -346,13 +347,13 @@ export class LocalAdapter implements DataAdapter {
     const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows);
     this.writeFile('scoring-rubric.md', updatedContent);
 
-    const weightNum = parseFloat(row['Weight'].replace('%', '')) || 0;
+    const weightNum = parseFloat(row['Weight'].replace('%', '').trim()) || 0;
     return {
-      dimension: row['Dimension'],
+      dimension: row['Dimension'].trim(),
       weight: weightNum,
-      poor_description: row['Poor (1-2)'] || null,
-      moderate_description: row['Moderate (3)'] || null,
-      strong_description: row['Strong (4-5)'] || null,
+      poor_description: row['Poor (1-2)'] ? row['Poor (1-2)'].trim() : null,
+      moderate_description: row['Moderate (3)'] ? row['Moderate (3)'].trim() : null,
+      strong_description: row['Strong (4-5)'] ? row['Strong (4-5)'].trim() : null,
     };
   }
 
@@ -361,29 +362,42 @@ export class LocalAdapter implements DataAdapter {
     const headers = ['Dimension', 'Weight', 'Poor (1-2)', 'Moderate (3)', 'Strong (4-5)'];
     const table = MarkdownTableParser.parseTable(content);
 
+    const target = dimension.dimension.trim().toLowerCase();
     const idx = table.rows.findIndex(
-      r => (r['Dimension'] || '').toLowerCase() === dimension.dimension.toLowerCase()
+      r => (r['Dimension'] || '').trim().toLowerCase() === target
     );
 
     const weightStr = `${dimension.weight}%`;
-    const newRowRecord: Record<string, string> = {
-      'Dimension': dimension.dimension,
-      'Weight': weightStr,
-      'Poor (1-2)': dimension.poor_description || '',
-      'Moderate (3)': dimension.moderate_description || '',
-      'Strong (4-5)': dimension.strong_description || '',
-    };
 
     if (idx >= 0) {
-      table.rows[idx] = newRowRecord;
+      const existing = table.rows[idx];
+      table.rows[idx] = {
+        'Dimension': dimension.dimension.trim() || existing['Dimension'],
+        'Weight': weightStr,
+        'Poor (1-2)': dimension.poor_description !== undefined ? (dimension.poor_description || '') : existing['Poor (1-2)'],
+        'Moderate (3)': dimension.moderate_description !== undefined ? (dimension.moderate_description || '') : existing['Moderate (3)'],
+        'Strong (4-5)': dimension.strong_description !== undefined ? (dimension.strong_description || '') : existing['Strong (4-5)'],
+      };
     } else {
-      table.rows.push(newRowRecord);
+      table.rows.push({
+        'Dimension': dimension.dimension.trim(),
+        'Weight': weightStr,
+        'Poor (1-2)': dimension.poor_description || '',
+        'Moderate (3)': dimension.moderate_description || '',
+        'Strong (4-5)': dimension.strong_description || '',
+      });
     }
 
     const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows);
     this.writeFile('scoring-rubric.md', updatedContent);
 
-    return dimension;
+    return {
+      dimension: dimension.dimension.trim(),
+      weight: dimension.weight,
+      poor_description: dimension.poor_description || null,
+      moderate_description: dimension.moderate_description || null,
+      strong_description: dimension.strong_description || null,
+    };
   }
 
   public async removeRubricDimension(dimension: string): Promise<boolean> {
@@ -391,9 +405,10 @@ export class LocalAdapter implements DataAdapter {
     const headers = ['Dimension', 'Weight', 'Poor (1-2)', 'Moderate (3)', 'Strong (4-5)'];
     const table = MarkdownTableParser.parseTable(content);
 
+    const target = dimension.trim().toLowerCase();
     const initialLen = table.rows.length;
     table.rows = table.rows.filter(
-      r => (r['Dimension'] || '').toLowerCase() !== dimension.toLowerCase()
+      r => (r['Dimension'] || '').trim().toLowerCase() !== target
     );
 
     if (table.rows.length !== initialLen) {

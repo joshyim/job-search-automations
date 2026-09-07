@@ -17,10 +17,10 @@ export function registerRubricTools(server: McpServer, adapter: DataAdapter): vo
 
   server.tool(
     'update_rubric_dimension',
-    'Update an existing rubric dimension weight or tier descriptions',
+    'Update an existing rubric dimension weight or tier descriptions (case-insensitive dimension matching)',
     {
-      dimension: z.string().describe('The name of the dimension to update'),
-      weight: z.number().optional().describe('New weight percentage (e.g. 25)'),
+      dimension: z.string().describe('The name of the dimension to update (case-insensitive)'),
+      weight: z.number().optional().describe('New weight integer value (e.g. 25; no sum-to-100 restriction)'),
       poor_description: z.string().optional().describe('Description for poor tier (score 1-2)'),
       moderate_description: z.string().optional().describe('Description for moderate tier (score 3)'),
       strong_description: z.string().optional().describe('Description for strong tier (score 4-5)'),
@@ -40,10 +40,10 @@ export function registerRubricTools(server: McpServer, adapter: DataAdapter): vo
 
   server.tool(
     'add_rubric_dimension',
-    'Add a new scoring dimension to the candidate evaluation rubric',
+    'Add or upsert a scoring dimension to the candidate evaluation rubric (case-insensitive matching)',
     {
-      dimension: z.string().describe('The dimension name'),
-      weight: z.number().describe('Weight percentage (e.g. 25)'),
+      dimension: z.string().describe('The dimension name (case-insensitive)'),
+      weight: z.number().describe('Weight integer value (e.g. 25; no sum-to-100 restriction)'),
       poor_description: z.string().optional().describe('Description for poor tier (score 1-2)'),
       moderate_description: z.string().optional().describe('Description for moderate tier (score 3)'),
       strong_description: z.string().optional().describe('Description for strong tier (score 4-5)'),
@@ -64,9 +64,9 @@ export function registerRubricTools(server: McpServer, adapter: DataAdapter): vo
 
   server.tool(
     'remove_rubric_dimension',
-    'Remove a dimension from the candidate evaluation rubric',
+    'Remove a dimension from the candidate evaluation rubric (case-insensitive matching)',
     {
-      dimension: z.string().describe('The name of the dimension to remove'),
+      dimension: z.string().describe('The name of the dimension to remove (case-insensitive)'),
     },
     async ({ dimension }) => {
       const removed = await adapter.removeRubricDimension(dimension);
