@@ -1,0 +1,17 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "job-search-plugin",
+  "version": "0.1.0",
+  "description": "Skill-based job search pipeline with dual-mode data access (Local markdown and Neon PostgreSQL).",
+  "author": {
+    "name": "Josh Yim",
+    "email": "josh@joshyim.com"
+  },
+  "keywords": [
+    "job-search",
+    "automation",
+    "mcp",
+    "neon",
+    "markdown"
+  ]
+}
