@@ -844,9 +844,9 @@ export class NeonAdapter implements DataAdapter {
       if (filters.status === 'in_progress') {
         whereClauses.push(`status IN ($${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
         params.push('in_progress', 'interviewing', 'in progress');
-      } else if (filters.status === 'closed') {
-        whereClauses.push(`status IN ($${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
-        params.push('closed', 'rejected', 'offer');
+      } else if (filters.status === 'not_pursuing' || filters.status === 'closed') {
+        whereClauses.push(`status IN ($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
+        params.push('not_pursuing', 'closed', 'rejected', 'offer');
       } else {
         whereClauses.push(`status = $${paramIndex++}`);
         params.push(filters.status);

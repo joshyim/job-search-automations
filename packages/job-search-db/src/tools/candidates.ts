@@ -13,7 +13,7 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
       location: z.string().optional().describe('Job location (e.g. Remote, San Francisco, CA)'),
       score: z.number().optional().describe('Overall match score (0-10 or 0-100)'),
       breakdown: z.record(z.number()).optional().describe('Score breakdown by rubric dimension'),
-      status: z.enum(['new', 'applied', 'in_progress', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new")'),
+      status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new")'),
       notes: z.string().optional().describe('Notes, key strengths, or interview highlights'),
     },
     async ({ company_name, job_title, url, location, score, breakdown, status, notes }) => {
@@ -35,10 +35,10 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
 
   server.tool(
     'update_candidate_status',
-    'Update the status of a candidate job posting (new, applied, in_progress, closed)',
+    'Update the status of a candidate job posting (new, applied, in_progress, not_pursuing)',
     {
       url: z.string().describe('The URL of the candidate to update'),
-      status: z.enum(['new', 'applied', 'in_progress', 'closed', 'interviewing', 'rejected', 'offer']).describe('New application status'),
+      status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).describe('New application status'),
       notes: z.string().optional().describe('Optional notes about the status update'),
     },
     async ({ url, status, notes }) => {
@@ -53,7 +53,7 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
     'get_candidates',
     'Retrieve job candidates, filterable by status, company, or score, and sortable',
     {
-      status: z.enum(['new', 'applied', 'in_progress', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Filter by status'),
+      status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Filter by status'),
       min_score: z.number().optional().describe('Filter by minimum score'),
       company_name: z.string().optional().describe('Filter by company name'),
       limit: z.number().optional().describe('Limit the number of candidates returned'),

@@ -291,7 +291,7 @@
                 <option value="new" ${c.status === 'new' ? 'selected' : ''}>New</option>
                 <option value="applied" ${c.status === 'applied' ? 'selected' : ''}>Applied</option>
                 <option value="in_progress" ${c.status === 'in_progress' || c.status === 'interviewing' ? 'selected' : ''}>In Progress</option>
-                <option value="closed" ${c.status === 'closed' || c.status === 'rejected' || c.status === 'offer' ? 'selected' : ''}>Closed</option>
+                <option value="not_pursuing" ${c.status === 'not_pursuing' || c.status === 'closed' || c.status === 'rejected' || c.status === 'offer' ? 'selected' : ''}>Not Pursuing</option>
               </select>
             </td>
             <td>${discovered}</td>
@@ -1270,7 +1270,7 @@
                   <option value="new" ${c.status === 'new' ? 'selected' : ''}>New</option>
                   <option value="applied" ${c.status === 'applied' ? 'selected' : ''}>Applied</option>
                   <option value="in_progress" ${c.status === 'in_progress' || c.status === 'interviewing' ? 'selected' : ''}>In Progress</option>
-                  <option value="closed" ${c.status === 'closed' || c.status === 'rejected' || c.status === 'offer' ? 'selected' : ''}>Closed</option>
+                  <option value="not_pursuing" ${c.status === 'not_pursuing' || c.status === 'closed' || c.status === 'rejected' || c.status === 'offer' ? 'selected' : ''}>Not Pursuing</option>
                 </select>
               </div>
             </div>

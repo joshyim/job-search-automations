@@ -850,7 +850,7 @@ export class LocalAdapter implements DataAdapter {
       candidates = candidates.filter(c => {
         if (c.status === filters.status) return true;
         if (filters.status === 'in_progress' && (c.status as string === 'interviewing' || c.status as string === 'in progress')) return true;
-        if (filters.status === 'closed' && (c.status as string === 'rejected' || c.status as string === 'offer')) return true;
+        if ((filters.status === 'not_pursuing' || filters.status === 'closed') && (c.status === 'not_pursuing' || c.status === 'closed' || (c.status as string) === 'rejected' || (c.status as string) === 'offer')) return true;
         return false;
       });
     }

@@ -1,4 +1,4 @@
-export type CandidateStatus = 'new' | 'applied' | 'in_progress' | 'closed' | 'interviewing' | 'rejected' | 'offer';
+export type CandidateStatus = 'new' | 'applied' | 'in_progress' | 'not_pursuing' | 'closed' | 'interviewing' | 'rejected' | 'offer';
 export type QueueStatus = 'pending' | 'assessed' | 'skipped';
 export type TitlePatternType = 'include' | 'exclude';
 

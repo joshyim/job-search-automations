@@ -308,6 +308,14 @@ describe('LocalAdapter', () => {
       const appliedList = await adapter.getCandidates({ status: 'applied' });
       expect(appliedList).toHaveLength(1);
       expect(appliedList[0].job_title).toBe('Staff Engineer');
+
+      // Update candidate status to not_pursuing
+      const notPursuingCandidate = await adapter.updateCandidateStatus('https://stripe.com/jobs/staff', 'not_pursuing', 'Role not a fit');
+      expect(notPursuingCandidate.status).toBe('not_pursuing');
+
+      const notPursuingList = await adapter.getCandidates({ status: 'not_pursuing' });
+      expect(notPursuingList).toHaveLength(1);
+      expect(notPursuingList[0].notes).toBe('Role not a fit');
     });
   });
 
