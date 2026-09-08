@@ -64,7 +64,7 @@ trap "rm -rf '$TMP_TEST_DIR'" EXIT
 
 TMP_CONFIG_DIR="$TMP_TEST_DIR/config"
 TMP_CONFIG_FILE="$TMP_CONFIG_DIR/config.json"
-TMP_WDP="$TMP_TEST_DIR/share/job-search-plugin"
+TMP_WDP="$TMP_TEST_DIR/share/job-search-automation"
 
 FIXTURE_RESUME="$ROOT_DIR/tests/fixtures/sample-resume.pdf"
 FIXTURE_RESUME_V2="$ROOT_DIR/tests/fixtures/sample-resume-v2.pdf"

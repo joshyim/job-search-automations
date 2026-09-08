@@ -69,10 +69,11 @@ class JobSearchUIServer {
     }
 
     // Ensure a configuration file exists so local mode starts effortlessly out-of-the-box
-    const defaultCfgDir = path.join(os.homedir(), '.config', 'job-search-plugin');
+    const defaultCfgDir = path.join(os.homedir(), '.config', 'job-search-automation');
     const defaultCfgFile = path.join(defaultCfgDir, 'config.json');
-    const defaultWdp = path.join(os.homedir(), '.local', 'share', 'job-search-plugin');
-    const activeCfg = this.options.configPath || process.env.JOB_SEARCH_CONFIG_PATH || defaultCfgFile;
+    const defaultWdp = path.join(os.homedir(), '.local', 'share', 'job-search-automation');
+    const legacyCfgFile = path.join(os.homedir(), '.config', 'job-search-plugin', 'config.json');
+    const activeCfg = this.options.configPath || process.env.JOB_SEARCH_CONFIG_PATH || (fs.existsSync(legacyCfgFile) && !fs.existsSync(defaultCfgFile) ? legacyCfgFile : defaultCfgFile);
 
     if (!fs.existsSync(activeCfg)) {
       console.log(`[UI Server] No config file found at ${activeCfg}. Creating default local configuration...`);

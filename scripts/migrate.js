@@ -3,7 +3,7 @@
 /**
  * scripts/migrate.js
  *
- * Migration utility for job-search-plugin:
+ * Migration utility for job-search-automation:
  * - Scans a legacy markdown vault/directory for pipeline tables
  * - Parses tables into structured records
  * - Migrates records into either:
@@ -25,9 +25,12 @@ const projectRoot = path.resolve(__dirname, '..');
 
 const requireFromPkg = createRequire(path.join(projectRoot, 'packages', 'job-search-db', 'package.json'));
 
-const DEFAULT_KEYCHAIN_SERVICE = 'job-search-plugin';
+const DEFAULT_KEYCHAIN_SERVICE = 'job-search-automation';
+const LEGACY_KEYCHAIN_SERVICE = 'job-search-plugin';
 const DEFAULT_KEYCHAIN_ACCOUNT = 'neon-connection-string';
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), '.config', 'job-search-plugin', 'config.json');
+const DEFAULT_CONFIG_PATH = fs.existsSync(path.join(os.homedir(), '.config', 'job-search-automation', 'config.json'))
+  ? path.join(os.homedir(), '.config', 'job-search-automation', 'config.json')
+  : path.join(os.homedir(), '.config', 'job-search-plugin', 'config.json');
 
 function getKeychainSecret(service, account) {
   try {
@@ -38,6 +41,16 @@ function getKeychainSecret(service, account) {
     );
     return stdout.trim() || null;
   } catch {
+    if (service === DEFAULT_KEYCHAIN_SERVICE) {
+      try {
+        const stdoutLegacy = execFileSync(
+          'security',
+          ['find-generic-password', '-s', LEGACY_KEYCHAIN_SERVICE, '-a', account, '-w'],
+          { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
+        );
+        return stdoutLegacy.trim() || null;
+      } catch {}
+    }
     return null;
   }
 }
@@ -199,7 +212,7 @@ async function main() {
     } catch {}
   }
   mode = mode || 'local';
-  workflowDataPath = workflowDataPath || path.join(os.homedir(), '.local', 'share', 'job-search-plugin');
+  workflowDataPath = workflowDataPath || path.join(os.homedir(), '.local', 'share', 'job-search-automation');
 
   if (!sourceDir) {
     console.error('\x1b[31m[ERROR] Source directory required. Use --source <path>\x1b[0m');

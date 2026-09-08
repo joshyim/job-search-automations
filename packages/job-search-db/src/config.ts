@@ -22,7 +22,15 @@ export const ConfigSchema = z.object({
 export type ServerConfig = z.infer<typeof ConfigSchema>;
 
 export function getDefaultConfigPath(): string {
-  return path.join(os.homedir(), '.config', 'job-search-plugin', 'config.json');
+  const newPath = path.join(os.homedir(), '.config', 'job-search-automation', 'config.json');
+  if (fs.existsSync(newPath)) {
+    return newPath;
+  }
+  const legacyPath = path.join(os.homedir(), '.config', 'job-search-plugin', 'config.json');
+  if (fs.existsSync(legacyPath)) {
+    return legacyPath;
+  }
+  return newPath;
 }
 
 export function loadConfig(configPath?: string): ServerConfig {

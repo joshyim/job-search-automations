@@ -1,7 +1,7 @@
 ---
 name: job-search-crawl
 description: Crawl a single company's job board, match postings against target titles, and write matched results to the crawl queue. Designed to be invoked by the job-search-lead-gen orchestrator per company.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium). Designed for Claude Code.
+compatibility: Requires Node.js and Playwright (npx playwright install chromium).
 ---
 
 # Job Search - Crawl (Single Company)
@@ -18,7 +18,7 @@ This skill processes the single company passed via `$ARGUMENTS`. It expects the 
 
 ### 1. Crawl the job board
 
-Resolve `workflowDataPath` from `~/.config/job-search-plugin/config.json` (default: `~/.local/share/job-search-plugin`).
+Resolve `workflowDataPath` from `~/.config/job-search-automation/config.json` (default: `~/.local/share/job-search-automation`).
 Write ALL intermediate files to `<workflowDataPath>/tmp/<company-slug>/`. Create the directory if it does not exist. Never write temp files to the repository root or outside this directory.
 
 Primary method - the shared browser crawl script:

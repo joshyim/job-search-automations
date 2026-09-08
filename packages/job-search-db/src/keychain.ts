@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 
-export const DEFAULT_KEYCHAIN_SERVICE = 'job-search-plugin';
+export const DEFAULT_KEYCHAIN_SERVICE = 'job-search-automation';
+export const LEGACY_KEYCHAIN_SERVICE = 'job-search-plugin';
 export const DEFAULT_KEYCHAIN_ACCOUNT = 'neon-connection-string';
 
 /**
@@ -33,7 +34,10 @@ export function getNeonConnectionString(
   account: string = DEFAULT_KEYCHAIN_ACCOUNT
 ): string {
   // 1. Try Keychain first
-  const keychainSecret = getKeychainSecret(service, account);
+  let keychainSecret = getKeychainSecret(service, account);
+  if (!keychainSecret && service === DEFAULT_KEYCHAIN_SERVICE) {
+    keychainSecret = getKeychainSecret(LEGACY_KEYCHAIN_SERVICE, account);
+  }
   if (keychainSecret) {
     return keychainSecret;
   }

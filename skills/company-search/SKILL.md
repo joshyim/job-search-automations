@@ -1,7 +1,7 @@
 ---
 name: company-search
 description: Discover companies actively hiring for target roles and add qualified matches to the target companies list via MCP. Use to expand company coverage across YC, BuiltIn, Wellfound, and LinkedIn.
-compatibility: Designed for Claude Code.
+compatibility: Requires Node.js and Playwright (npx playwright install chromium).
 ---
 
 # Company Search
@@ -11,7 +11,7 @@ Discover companies that are actively hiring for target roles and add qualified m
 ## Resume Resolution
 
 Before beginning:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-plugin/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-plugin`).
+1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
 2. Verify `workflowDataPath/resume.pdf` exists.
 3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
    ```

@@ -31,7 +31,8 @@ try {
   process.exit(1);
 }
 
-const DEFAULT_KEYCHAIN_SERVICE = 'job-search-plugin';
+const DEFAULT_KEYCHAIN_SERVICE = 'job-search-automation';
+const LEGACY_KEYCHAIN_SERVICE = 'job-search-plugin';
 const DEFAULT_KEYCHAIN_ACCOUNT = 'neon-connection-string';
 
 function getKeychainSecret(service, account) {
@@ -43,6 +44,16 @@ function getKeychainSecret(service, account) {
     );
     return stdout.trim() || null;
   } catch {
+    if (service === DEFAULT_KEYCHAIN_SERVICE) {
+      try {
+        const stdoutLegacy = execFileSync(
+          'security',
+          ['find-generic-password', '-s', LEGACY_KEYCHAIN_SERVICE, '-a', account, '-w'],
+          { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] }
+        );
+        return stdoutLegacy.trim() || null;
+      } catch {}
+    }
     return null;
   }
 }

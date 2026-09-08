@@ -28,7 +28,7 @@ describe('Config Loader', () => {
     const config = loadConfig(configPath);
     expect(config.mode).toBe('local');
     expect(config.workflowDataPath).toBe('/Users/test/job-data');
-    expect(config.keychainService).toBe('job-search-plugin');
+    expect(config.keychainService).toBe('job-search-automation');
     expect(config.keychainAccount).toBe('neon-connection-string');
   });
 

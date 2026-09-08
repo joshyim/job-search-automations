@@ -1,12 +1,13 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "job-search-plugin",
+  "name": "job-search-automation",
   "version": "0.1.0",
   "description": "Skill-based job search pipeline with dual-mode data access (Local markdown and Neon PostgreSQL).",
   "author": {
     "name": "Josh Yim",
     "email": "josh@joshyim.com"
   },
+  "repository": "https://github.com/joshyim/personal-automation",
   "keywords": [
     "job-search",
     "automation",

@@ -1,7 +1,7 @@
 ---
 name: job-search-assess
 description: Validate and score pending crawl-queue postings for a single company, then write qualifying results to the pipeline tracker. Designed to be invoked by the job-search-lead-gen orchestrator per company.
-compatibility: Requires Node.js. Designed for Claude Code.
+compatibility: Requires Node.js and Playwright (npx playwright install chromium).
 ---
 
 # Job Search - Assess (Single Company)
@@ -17,7 +17,7 @@ This skill processes pending queue entries for the company passed via `$ARGUMENT
 ## Resume Resolution
 
 Before processing:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-plugin/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-plugin`).
+1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
 2. Verify `workflowDataPath/resume.pdf` exists.
 3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
    ```

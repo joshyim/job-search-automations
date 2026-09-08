@@ -25,11 +25,11 @@ RED="\033[0;31m"
 RESET="\033[0m"
 
 # Default configuration settings
-DEFAULT_CONFIG_DIR="$HOME/.config/job-search-plugin"
+DEFAULT_CONFIG_DIR="$HOME/.config/job-search-automation"
 DEFAULT_CONFIG_FILE="$DEFAULT_CONFIG_DIR/config.json"
-DEFAULT_WDP="$HOME/.local/share/job-search-plugin"
+DEFAULT_WDP="$HOME/.local/share/job-search-automation"
 
-KEYCHAIN_SERVICE="job-search-plugin"
+KEYCHAIN_SERVICE="job-search-automation"
 KEYCHAIN_ACCOUNT="neon-connection-string"
 
 # Operational flags & parameters
@@ -47,7 +47,7 @@ MOCK_MODE=false
 print_banner() {
   echo -e "${CYAN}${BOLD}"
   echo "=============================================================="
-  echo "          Job Search Plugin - Setup & Configuration           "
+  echo "        Job Search Automation - Setup & Configuration         "
   echo "=============================================================="
   echo -e "${RESET}"
 }
@@ -61,7 +61,7 @@ print_help() {
   echo -e "${BOLD}Setup Options:${RESET}"
   echo "  --mode <local|neon>          Storage mode ('local' or 'neon')"
   echo "  --workflow-data-path <path>  Target directory for workflow data and resume"
-  echo "                               (default: ~/.local/share/job-search-plugin/)"
+  echo "                               (default: ~/.local/share/job-search-automation/)"
   echo "  --resume <path>              Path to initial resume file to import"
   echo "  --neon-connection-string <s> Neon PostgreSQL connection string (Neon mode)"
   echo "  --migrate-from <path>        Directory containing existing markdown files to migrate"
@@ -268,7 +268,7 @@ if [ "$NON_INTERACTIVE" = false ]; then
 
   # 2. Workflow Data Path
   if [ -z "$WORKFLOW_DATA_PATH" ]; then
-    read -r -p "Enter workflow data directory [~/.local/share/job-search-plugin]: " user_wdp
+    read -r -p "Enter workflow data directory [~/.local/share/job-search-automation]: " user_wdp
     WORKFLOW_DATA_PATH="${user_wdp:-$DEFAULT_WDP}"
     echo ""
   fi
@@ -439,7 +439,7 @@ fi
 
 echo ""
 echo -e "${GREEN}${BOLD}==============================================================${RESET}"
-echo -e "${GREEN}${BOLD}  Setup Complete! Job Search Plugin is ready to use.          ${RESET}"
+echo -e "${GREEN}${BOLD}  Setup Complete! Job Search Automation is ready to use.      ${RESET}"
 echo -e "${GREEN}${BOLD}==============================================================${RESET}"
 echo -e "  Mode:              ${BOLD}$MODE${RESET}"
 echo -e "  Data Directory:    ${BOLD}$WORKFLOW_DATA_PATH${RESET}"
@@ -448,4 +448,8 @@ echo -e "  Configuration:     ${BOLD}$CONFIG_FILE${RESET}"
 echo ""
 echo -e "To update your resume in the future, simply run:"
 echo -e "  ${BOLD}./setup.sh --update-resume <path-to-new-resume.pdf>${RESET}"
+echo ""
+echo -e "${CYAN}${BOLD}Recurring Pipeline Runs:${RESET}"
+echo "  Use the /schedule command to run the lead-gen orchestrator automatically:"
+echo "  /schedule CronExpression=\"0 9 * * 1-5\" Prompt=\"Run job-search-lead-gen for a batch of 5 companies\""
 echo ""

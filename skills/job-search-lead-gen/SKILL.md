@@ -1,7 +1,7 @@
 ---
 name: job-search-lead-gen
 description: Orchestrate the job search pipeline - select a batch of companies, then crawl and assess each one sequentially. Use when scanning for new job postings or running the daily job search pipeline.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium). Designed for Claude Code.
+compatibility: Requires Node.js and Playwright (npx playwright install chromium).
 ---
 
 # Job Search - Lead Gen (Orchestrator)
@@ -15,7 +15,7 @@ Select a batch of companies via MCP, then for each company: crawl its job board 
 ## Resume Resolution
 
 Before beginning, resolve and verify the candidate resume:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-plugin/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-plugin`).
+1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
 2. Verify `workflowDataPath/resume.pdf` exists.
 3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
    ```

@@ -1,7 +1,7 @@
 ---
 name: title-discovery
 description: Discover job titles that match key skills but are not yet in the target titles list, adding validated include/exclude patterns via MCP. Use to expand title coverage.
-compatibility: Designed for Claude Code.
+compatibility: Requires Node.js and Playwright (npx playwright install chromium).
 ---
 
 # Title Discovery
@@ -11,7 +11,7 @@ Discover job titles that match key candidate skills but are not yet covered by t
 ## Resume Resolution
 
 Before beginning:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-plugin/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-plugin`).
+1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
 2. Verify `workflowDataPath/resume.pdf` exists.
 3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
    ```

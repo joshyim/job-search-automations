@@ -1,4 +1,4 @@
--- Canonical PostgreSQL DDL for job-search-plugin (Neon DB)
+-- Canonical PostgreSQL DDL for job-search-automation (Neon DB)
 
 -- 1. Companies
 CREATE TABLE IF NOT EXISTS companies (
