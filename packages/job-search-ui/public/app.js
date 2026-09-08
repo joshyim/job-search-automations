@@ -111,9 +111,9 @@
 
     // Update header titles
     const titles = {
-      dashboard: ['Pipeline Dashboard', 'High-level pipeline health, telemetry, and top matched jobs.'],
+      dashboard: ['Dashboard', ''],
       companies: ['Target Companies', 'Manage target list, update careers job boards, and toggle exclusions.'],
-      titles: ['Title Patterns', 'Configure include & exclude match patterns for crawler filtering.'],
+      titles: ['Job Title Patterns', 'Configure include & exclude match patterns for crawler filtering.'],
       skills: ['Target Skills', 'Manage required and preferred skills with priority designations.'],
       rubric: ['Scoring Rubric', 'Customize dimension weights and tier descriptors. Total weight must sum to 100%.'],
       visualization: ['Workflow Visualization', 'Interactive conceptual system architecture and sub-process loops.'],

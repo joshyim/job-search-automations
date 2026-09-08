@@ -130,15 +130,11 @@ body {
 }
 
 .brand-text h2 {
-  font-size: 15.5px;
+  font-size: 14px;
   font-weight: 700;
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
   color: var(--text-primary);
-  line-height: 1.2;
-}
-
-.brand-text .badge {
-  margin-top: 2px;
+  line-height: 1.25;
 }
 
 .nav-menu {
