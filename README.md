@@ -162,3 +162,31 @@ Run the automated test suites to ensure specification compliance:
 # MCP Server unit tests
 npm test --prefix packages/job-search-db
 ```
+
+---
+
+## Publishing & Monorepo Synchronization
+
+This plugin is maintained inside the private `personal-automation` monorepo and published as a standalone public repository at [github.com/joshyim/job-search-automations](https://github.com/joshyim/job-search-automations).
+
+To ensure that internal or experimental work in the monorepo is not published prematurely, synchronization is **strictly on-demand** and performed via `scripts/sync-public.sh`.
+
+### How to Sync Updates to the Public Repository
+
+1. **Commit your changes** in the monorepo.
+2. **Preview what will be pushed** using dry-run mode:
+   ```bash
+   ./scripts/sync-public.sh --dry-run
+   ```
+3. **Execute the sync**:
+   ```bash
+   npm run sync:public
+   # or
+   ./scripts/sync-public.sh
+   ```
+
+### How the Sync Script Works
+- **Clean Working Tree**: Confirms there are no uncommitted changes in `job-search-automation/` before pushing.
+- **Commit Isolation (`git subtree`)**: Extracts only commits that touched files inside `job-search-automation/`. Commits from other monorepo directories (such as `gmail-ai-triage/` or `.agents/`) are completely omitted from the public git history.
+- **Confirmation Prompt**: Previews the latest commits in `job-search-automation/` and asks for explicit confirmation before pushing.
+

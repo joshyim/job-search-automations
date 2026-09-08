@@ -8,6 +8,7 @@
     "ui": "npm run start --prefix packages/job-search-ui",
     "ui:dev": "npm run dev --prefix packages/job-search-ui",
     "build": "npm run build --prefix packages/job-search-db && npm run build --prefix packages/job-search-ui",
-    "test": "npm test --prefix packages/job-search-db"
+    "test": "npm test --prefix packages/job-search-db",
+    "sync:public": "bash scripts/sync-public.sh"
   }
 }
