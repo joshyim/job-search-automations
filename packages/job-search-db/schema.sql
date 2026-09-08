@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS candidates (
     location VARCHAR(255),
     score NUMERIC(5,2),
     breakdown JSONB,
-    status VARCHAR(50) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'applied', 'interviewing', 'rejected', 'offer')),
+    status VARCHAR(50) NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'applied', 'in_progress', 'closed', 'interviewing', 'rejected', 'offer')),
     notes TEXT,
     discovered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     applied_at TIMESTAMPTZ,

@@ -49,6 +49,22 @@ export function registerQueueTools(server: McpServer, adapter: DataAdapter): voi
   );
 
   server.tool(
+    'list_queue',
+    'Retrieve crawl queue entries, optionally filtered by status (pending, assessed, skipped) or company',
+    {
+      status: z.enum(['pending', 'assessed', 'skipped']).optional().describe('Filter by queue status'),
+      company_name: z.string().optional().describe('Optional company name filter'),
+      limit: z.number().optional().describe('Optional limit on number of items returned'),
+    },
+    async ({ status, company_name, limit }) => {
+      const entries = await adapter.listQueue({ status, company_name, limit });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
     'update_queue_status',
     'Update the processing status of a URL in the crawl queue (e.g. assessed, skipped)',
     {

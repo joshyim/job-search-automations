@@ -50,6 +50,31 @@ export function registerCompanyTools(server: McpServer, adapter: DataAdapter): v
   );
 
   server.tool(
+    'update_company',
+    'Update details of an existing company (name, careers URL, excluded status, notes)',
+    {
+      current_name: z.string().describe('The current name of the company to update'),
+      name: z.string().optional().describe('New name for the company'),
+      careers_url: z.string().optional().describe('New careers / jobs URL'),
+      is_excluded: z.boolean().optional().describe('Toggle excluded status (true/false)'),
+      notes: z.string().optional().describe('Notes about the company'),
+      last_searched_at: z.string().optional().describe('ISO timestamp of when company was last searched'),
+    },
+    async ({ current_name, name, careers_url, is_excluded, notes, last_searched_at }) => {
+      const company = await adapter.updateCompany(current_name, {
+        name,
+        careers_url,
+        is_excluded,
+        notes,
+        last_searched_at,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(company, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
     'get_batch',
     'Get a batch of least-recently-searched companies for pipeline processing',
     {

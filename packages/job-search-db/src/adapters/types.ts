@@ -1,4 +1,4 @@
-export type CandidateStatus = 'new' | 'applied' | 'interviewing' | 'rejected' | 'offer';
+export type CandidateStatus = 'new' | 'applied' | 'in_progress' | 'closed' | 'interviewing' | 'rejected' | 'offer';
 export type QueueStatus = 'pending' | 'assessed' | 'skipped';
 export type TitlePatternType = 'include' | 'exclude';
 
@@ -94,16 +94,21 @@ export interface DataAdapter {
   // Companies
   listCompanies(includeExcluded?: boolean): Promise<Company[]>;
   addCompany(data: { name: string; careers_url: string; notes?: string; last_searched_at?: string }): Promise<Company>;
+  updateCompany(currentName: string, updates: Partial<Company>): Promise<Company>;
   excludeCompany(name: string, reason?: string): Promise<Company>;
   getBatch(limit: number): Promise<Company[]>;
 
   // Title Patterns
   listTitlePatterns(type?: TitlePatternType): Promise<TitlePattern[]>;
   addTitlePattern(data: { pattern: string; type: TitlePatternType; level?: string; notes?: string }): Promise<TitlePattern>;
+  updateTitlePattern(pattern: string, type: TitlePatternType, updates: Partial<TitlePattern>): Promise<TitlePattern>;
   removeTitlePattern(pattern: string, type?: TitlePatternType): Promise<boolean>;
 
   // Skills
   listSkills(category?: string): Promise<Skill[]>;
+  addSkill(data: { name: string; category?: string; importance?: string; notes?: string }): Promise<Skill>;
+  updateSkill(name: string, updates: Partial<Skill>): Promise<Skill>;
+  removeSkill(name: string): Promise<boolean>;
 
   // Rubric
   getScoringRubric(): Promise<RubricDimension[]>;
@@ -115,6 +120,7 @@ export interface DataAdapter {
   checkUrlExists(url: string): Promise<{ exists: boolean; entry?: QueueEntry }>;
   addToQueue(data: { url: string; company_name: string; notes?: string }): Promise<QueueEntry>;
   getPendingQueue(companyName?: string, limit?: number): Promise<QueueEntry[]>;
+  listQueue(filters?: { status?: QueueStatus; company_name?: string; limit?: number }): Promise<QueueEntry[]>;
   updateQueueStatus(url: string, status: QueueStatus, notes?: string): Promise<QueueEntry>;
 
   // Candidates

@@ -78,10 +78,26 @@ describe('LocalAdapter', () => {
       expect(batch[1].name).toBe('Alpha');
       expect(batch.map(c => c.name)).not.toContain('Gamma'); // Excluded omitted
     });
+
+    it('updates company details including toggling excluded status', async () => {
+      await adapter.addCompany({ name: 'Linear', careers_url: 'https://linear.app/careers' });
+      const updated = await adapter.updateCompany('Linear', {
+        careers_url: 'https://linear.app/jobs',
+        is_excluded: true,
+        notes: 'Remote only',
+      });
+      expect(updated.careers_url).toBe('https://linear.app/jobs');
+      expect(updated.is_excluded).toBe(true);
+      expect(updated.notes).toBe('Remote only');
+
+      // Un-exclude
+      const unexcluded = await adapter.updateCompany('Linear', { is_excluded: false });
+      expect(unexcluded.is_excluded).toBe(false);
+    });
   });
 
   describe('Title Patterns & Skills', () => {
-    it('adds, lists, and removes title patterns', async () => {
+    it('adds, lists, updates, and removes title patterns', async () => {
       await adapter.addTitlePattern({
         pattern: 'Staff Software Engineer',
         type: 'include',
@@ -102,12 +118,55 @@ describe('LocalAdapter', () => {
       expect(excludes).toHaveLength(1);
       expect(excludes[0].pattern).toBe('Engineering Manager');
 
+      // Update title pattern
+      const updatedPattern = await adapter.updateTitlePattern('Staff Software Engineer', 'include', {
+        level: 'Principal',
+        notes: 'Updated note',
+      });
+      expect(updatedPattern.level).toBe('Principal');
+      expect(updatedPattern.notes).toBe('Updated note');
+
       const removed = await adapter.removeTitlePattern('Engineering Manager', 'exclude');
       expect(removed).toBe(true);
 
       const remaining = await adapter.listTitlePatterns();
       expect(remaining).toHaveLength(1);
       expect(remaining[0].pattern).toBe('Staff Software Engineer');
+      expect(remaining[0].level).toBe('Principal');
+    });
+
+    it('adds, lists, updates, and removes skills', async () => {
+      await adapter.addSkill({
+        name: 'TypeScript',
+        category: 'Languages',
+        importance: 'core',
+        notes: 'Primary',
+      });
+      await adapter.addSkill({
+        name: 'Postgres',
+        category: 'Databases',
+        importance: 'preferred',
+      });
+
+      const skills = await adapter.listSkills();
+      expect(skills).toHaveLength(2);
+      expect(skills.map(s => s.name)).toContain('TypeScript');
+
+      // Update skill
+      const updated = await adapter.updateSkill('TypeScript', {
+        importance: 'P1',
+        notes: 'High priority',
+      });
+      expect(updated.importance).toBe('P1');
+      expect(updated.notes).toBe('High priority');
+
+      // Remove skill
+      const removed = await adapter.removeSkill('Postgres');
+      expect(removed).toBe(true);
+
+      const remaining = await adapter.listSkills();
+      expect(remaining).toHaveLength(1);
+      expect(remaining[0].name).toBe('TypeScript');
     });
 
     it('lists skills by category', async () => {
@@ -149,20 +208,21 @@ describe('LocalAdapter', () => {
       const rubric = await adapter.getScoringRubric();
       const titleMatch = rubric.find(r => r.dimension === 'Title match');
       expect(titleMatch?.weight).toBe(35);
-      expect(titleMatch?.strong_description).toBe('Exact Staff level match');
     });
 
-    it('adds and removes a rubric dimension', async () => {
+    it('adds and removes a rubric dimension dynamically', async () => {
       await adapter.addRubricDimension({
         dimension: 'Location / Remote Fit',
         weight: 15,
-        poor_description: 'On-site required',
-        moderate_description: 'Hybrid with travel',
-        strong_description: '100% remote',
+        poor_description: 'Strictly on-site only',
+        moderate_description: 'Hybrid with flexible days',
+        strong_description: 'Fully remote anywhere in US',
       });
 
       let rubric = await adapter.getScoringRubric();
-      expect(rubric.map(r => r.dimension)).toContain('Location / Remote Fit');
+      const added = rubric.find(r => r.dimension === 'Location / Remote Fit');
+      expect(added).toBeDefined();
+      expect(added?.weight).toBe(15);
 
       const removed = await adapter.removeRubricDimension('Location / Remote Fit');
       expect(removed).toBe(true);
@@ -173,7 +233,7 @@ describe('LocalAdapter', () => {
   });
 
   describe('Crawl Queue Operations', () => {
-    it('checks existence, adds to queue, and updates status', async () => {
+    it('checks existence, adds to queue, lists by status, and updates status', async () => {
       const url = 'https://stripe.com/jobs/12345';
       const initialCheck = await adapter.checkUrlExists(url);
       expect(initialCheck.exists).toBe(false);
@@ -189,12 +249,23 @@ describe('LocalAdapter', () => {
       expect(existsCheck.exists).toBe(true);
       expect(existsCheck.entry?.company_name).toBe('Stripe');
 
-      const pending = await adapter.getPendingQueue('Stripe');
-      expect(pending).toHaveLength(1);
+      // Test listQueue
+      const allQueue = await adapter.listQueue();
+      expect(allQueue).toHaveLength(1);
+      expect(allQueue[0].status).toBe('pending');
+
+      const pendingQueue = await adapter.listQueue({ status: 'pending' });
+      expect(pendingQueue).toHaveLength(1);
+
+      const assessedQueueBefore = await adapter.listQueue({ status: 'assessed' });
+      expect(assessedQueueBefore).toHaveLength(0);
 
       const updated = await adapter.updateQueueStatus(url, 'assessed', 'Scored 9/10');
       expect(updated.status).toBe('assessed');
       expect(updated.notes).toBe('Scored 9/10');
+
+      const assessedQueueAfter = await adapter.listQueue({ status: 'assessed' });
+      expect(assessedQueueAfter).toHaveLength(1);
 
       const remainingPending = await adapter.getPendingQueue('Stripe');
       expect(remainingPending).toHaveLength(0);

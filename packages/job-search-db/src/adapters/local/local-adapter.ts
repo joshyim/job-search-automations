@@ -147,6 +147,38 @@ export class LocalAdapter implements DataAdapter {
     return updatedCompany;
   }
 
+  public async updateCompany(currentName: string, updates: Partial<Company>): Promise<Company> {
+    const content = this.readFile('target-companies.md');
+    const headers = ['Company', 'Careers URL', 'Excluded', 'Notes', 'Last Searched'];
+    const table = MarkdownTableParser.parseTable(content);
+
+    const existingIndex = table.rows.findIndex(
+      r => (r['Company'] || '').toLowerCase() === currentName.toLowerCase()
+    );
+
+    if (existingIndex < 0) {
+      throw new Error(`Company "${currentName}" not found`);
+    }
+
+    const row = table.rows[existingIndex];
+    if (updates.name !== undefined) row['Company'] = updates.name;
+    if (updates.careers_url !== undefined) row['Careers URL'] = updates.careers_url;
+    if (updates.is_excluded !== undefined) row['Excluded'] = updates.is_excluded ? 'Yes' : 'No';
+    if (updates.notes !== undefined) row['Notes'] = updates.notes || '';
+    if (updates.last_searched_at !== undefined) row['Last Searched'] = updates.last_searched_at || '';
+
+    const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows);
+    this.writeFile('target-companies.md', updatedContent);
+
+    return {
+      name: row['Company'],
+      careers_url: row['Careers URL'],
+      is_excluded: (row['Excluded'] || '').toLowerCase() === 'yes' || (row['Excluded'] || '').toLowerCase() === 'true',
+      notes: row['Notes'] || null,
+      last_searched_at: row['Last Searched'] || null,
+    };
+  }
+
   public async excludeCompany(name: string, reason?: string): Promise<Company> {
     const content = this.readFile('target-companies.md');
     const headers = ['Company', 'Careers URL', 'Excluded', 'Notes', 'Last Searched'];
@@ -259,6 +291,37 @@ export class LocalAdapter implements DataAdapter {
     };
   }
 
+  public async updateTitlePattern(pattern: string, type: TitlePatternType, updates: Partial<TitlePattern>): Promise<TitlePattern> {
+    const content = this.readFile('target-job-titles-and-skills.md');
+    const headers = ['Pattern', 'Type', 'Level', 'Notes'];
+    const table = MarkdownTableParser.parseTable(content, '## Title Patterns');
+
+    const existingIdx = table.rows.findIndex(
+      r => (r['Pattern'] || '').toLowerCase() === pattern.toLowerCase() &&
+           (r['Type'] || '').toLowerCase() === type.toLowerCase()
+    );
+
+    if (existingIdx < 0) {
+      throw new Error(`Title pattern "${pattern}" (${type}) not found`);
+    }
+
+    const row = table.rows[existingIdx];
+    if (updates.pattern !== undefined) row['Pattern'] = updates.pattern;
+    if (updates.type !== undefined) row['Type'] = updates.type;
+    if (updates.level !== undefined) row['Level'] = updates.level || '';
+    if (updates.notes !== undefined) row['Notes'] = updates.notes || '';
+
+    const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows, '## Title Patterns');
+    this.writeFile('target-job-titles-and-skills.md', updatedContent);
+
+    return {
+      pattern: row['Pattern'],
+      type: row['Type'] as TitlePatternType,
+      level: row['Level'] || null,
+      notes: row['Notes'] || null,
+    };
+  }
+
   public async removeTitlePattern(pattern: string, type?: TitlePatternType): Promise<boolean> {
     const content = this.readFile('target-job-titles-and-skills.md');
     const headers = ['Pattern', 'Type', 'Level', 'Notes'];
@@ -296,6 +359,85 @@ export class LocalAdapter implements DataAdapter {
       return skills.filter(s => (s.category || '').toLowerCase() === category.toLowerCase());
     }
     return skills;
+  }
+
+  public async addSkill(data: { name: string; category?: string; importance?: string; notes?: string }): Promise<Skill> {
+    const content = this.readFile('target-job-titles-and-skills.md');
+    const headers = ['Skill', 'Category', 'Importance', 'Notes'];
+    const table = MarkdownTableParser.parseTable(content, '## Skills');
+
+    const existingIdx = table.rows.findIndex(
+      r => (r['Skill'] || '').toLowerCase() === data.name.toLowerCase()
+    );
+
+    const newRow: Record<string, string> = {
+      'Skill': data.name,
+      'Category': data.category || '',
+      'Importance': data.importance || 'preferred',
+      'Notes': data.notes || '',
+    };
+
+    if (existingIdx >= 0) {
+      table.rows[existingIdx] = newRow;
+    } else {
+      table.rows.push(newRow);
+    }
+
+    const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows, '## Skills');
+    this.writeFile('target-job-titles-and-skills.md', updatedContent);
+
+    return {
+      name: data.name,
+      category: data.category || null,
+      importance: data.importance || 'preferred',
+      notes: data.notes || null,
+    };
+  }
+
+  public async updateSkill(name: string, updates: Partial<Skill>): Promise<Skill> {
+    const content = this.readFile('target-job-titles-and-skills.md');
+    const headers = ['Skill', 'Category', 'Importance', 'Notes'];
+    const table = MarkdownTableParser.parseTable(content, '## Skills');
+
+    const existingIdx = table.rows.findIndex(
+      r => (r['Skill'] || '').toLowerCase() === name.toLowerCase()
+    );
+
+    if (existingIdx < 0) {
+      throw new Error(`Skill "${name}" not found`);
+    }
+
+    const row = table.rows[existingIdx];
+    if (updates.name !== undefined) row['Skill'] = updates.name;
+    if (updates.category !== undefined) row['Category'] = updates.category || '';
+    if (updates.importance !== undefined) row['Importance'] = updates.importance || '';
+    if (updates.notes !== undefined) row['Notes'] = updates.notes || '';
+
+    const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows, '## Skills');
+    this.writeFile('target-job-titles-and-skills.md', updatedContent);
+
+    return {
+      name: row['Skill'],
+      category: row['Category'] || null,
+      importance: row['Importance'] || null,
+      notes: row['Notes'] || null,
+    };
+  }
+
+  public async removeSkill(name: string): Promise<boolean> {
+    const content = this.readFile('target-job-titles-and-skills.md');
+    const headers = ['Skill', 'Category', 'Importance', 'Notes'];
+    const table = MarkdownTableParser.parseTable(content, '## Skills');
+
+    const initialLen = table.rows.length;
+    table.rows = table.rows.filter(r => (r['Skill'] || '').toLowerCase() !== name.toLowerCase());
+
+    if (table.rows.length !== initialLen) {
+      const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows, '## Skills');
+      this.writeFile('target-job-titles-and-skills.md', updatedContent);
+      return true;
+    }
+    return false;
   }
 
   // --- Scoring Rubric ---
@@ -500,6 +642,30 @@ export class LocalAdapter implements DataAdapter {
     return entries;
   }
 
+  public async listQueue(filters?: { status?: QueueStatus; company_name?: string; limit?: number }): Promise<QueueEntry[]> {
+    const content = this.readFile('crawl-queue.md');
+    const table = MarkdownTableParser.parseTable(content);
+
+    let entries: QueueEntry[] = table.rows.map(r => ({
+      url: r['URL'] || '',
+      company_name: r['Company'] || '',
+      status: ((r['Status'] || 'pending').toLowerCase() as QueueStatus),
+      notes: r['Notes'] || null,
+      created_at: r['Queued At'] || undefined,
+    }));
+
+    if (filters?.status) {
+      entries = entries.filter(e => e.status.toLowerCase() === filters.status!.toLowerCase());
+    }
+    if (filters?.company_name) {
+      entries = entries.filter(e => e.company_name.toLowerCase() === filters.company_name!.toLowerCase());
+    }
+    if (filters?.limit && filters.limit > 0) {
+      entries = entries.slice(0, filters.limit);
+    }
+    return entries;
+  }
+
   public async updateQueueStatus(url: string, status: QueueStatus, notes?: string): Promise<QueueEntry> {
     const content = this.readFile('crawl-queue.md');
     const headers = ['URL', 'Company', 'Status', 'Notes', 'Queued At'];
@@ -681,7 +847,12 @@ export class LocalAdapter implements DataAdapter {
     }).filter(c => c.url.length > 0);
 
     if (filters?.status) {
-      candidates = candidates.filter(c => c.status === filters.status);
+      candidates = candidates.filter(c => {
+        if (c.status === filters.status) return true;
+        if (filters.status === 'in_progress' && (c.status as string === 'interviewing' || c.status as string === 'in progress')) return true;
+        if (filters.status === 'closed' && (c.status as string === 'rejected' || c.status as string === 'offer')) return true;
+        return false;
+      });
     }
     if (filters?.company_name) {
       candidates = candidates.filter(c => c.company_name.toLowerCase() === filters.company_name?.toLowerCase());

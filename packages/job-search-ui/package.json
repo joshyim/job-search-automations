@@ -1,0 +1,20 @@
+{
+  "name": "@personal-automation/job-search-ui",
+  "version": "0.1.0",
+  "description": "Local Web UI Dashboard for Job Search Automation plugin communicating via MCP",
+  "type": "module",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

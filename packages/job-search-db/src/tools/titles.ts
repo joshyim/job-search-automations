@@ -35,6 +35,30 @@ export function registerTitleTools(server: McpServer, adapter: DataAdapter): voi
   );
 
   server.tool(
+    'update_title_pattern',
+    'Update an existing job title match pattern, level, or notes',
+    {
+      current_pattern: z.string().describe('The current pattern to update'),
+      current_type: z.enum(['include', 'exclude']).describe('The current pattern type'),
+      pattern: z.string().optional().describe('New pattern string'),
+      type: z.enum(['include', 'exclude']).optional().describe('New pattern type'),
+      level: z.string().optional().describe('New target level'),
+      notes: z.string().optional().describe('New notes'),
+    },
+    async ({ current_pattern, current_type, pattern, type, level, notes }) => {
+      const result = await adapter.updateTitlePattern(current_pattern, current_type, {
+        pattern,
+        type,
+        level,
+        notes,
+      });
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      };
+    }
+  );
+
+  server.tool(
     'remove_title_pattern',
     'Remove a job title match pattern',
     {

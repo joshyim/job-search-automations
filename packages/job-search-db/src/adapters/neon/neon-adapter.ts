@@ -105,6 +105,76 @@ export class NeonAdapter implements DataAdapter {
     };
   }
 
+  public async updateCompany(currentName: string, updates: Partial<Company>): Promise<Company> {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (updates.name !== undefined) {
+      fields.push(`name = $${idx++}`);
+      values.push(updates.name);
+    }
+    if (updates.careers_url !== undefined) {
+      fields.push(`careers_url = $${idx++}`);
+      values.push(updates.careers_url);
+    }
+    if (updates.is_excluded !== undefined) {
+      fields.push(`is_excluded = $${idx++}`);
+      values.push(updates.is_excluded);
+    }
+    if (updates.notes !== undefined) {
+      fields.push(`notes = $${idx++}`);
+      values.push(updates.notes);
+    }
+    if (updates.last_searched_at !== undefined) {
+      fields.push(`last_searched_at = $${idx++}`);
+      values.push(updates.last_searched_at);
+    }
+
+    if (fields.length === 0) {
+      const existing = await this.pool.query('SELECT * FROM companies WHERE LOWER(name) = LOWER($1)', [currentName]);
+      if (existing.rows.length === 0) throw new Error(`Company "${currentName}" not found`);
+      const r = existing.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        careers_url: r.careers_url,
+        is_excluded: Boolean(r.is_excluded),
+        notes: r.notes || null,
+        last_searched_at: r.last_searched_at || null,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      };
+    }
+
+    fields.push(`updated_at = NOW()`);
+    values.push(currentName);
+    const query = `
+      UPDATE companies
+      SET ${fields.join(', ')}
+      WHERE LOWER(name) = LOWER($${idx})
+      RETURNING id, name, careers_url, is_excluded, notes,
+                last_searched_at::text as last_searched_at,
+                created_at::text as created_at,
+                updated_at::text as updated_at
+    `;
+    const result = await this.pool.query(query, values);
+    if (result.rows.length === 0) {
+      throw new Error(`Company "${currentName}" not found`);
+    }
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      careers_url: r.careers_url,
+      is_excluded: Boolean(r.is_excluded),
+      notes: r.notes || null,
+      last_searched_at: r.last_searched_at || null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
+  }
+
   public async excludeCompany(name: string, reason?: string): Promise<Company> {
     const query = `
       INSERT INTO companies (name, careers_url, is_excluded, notes, updated_at)
@@ -207,6 +277,68 @@ export class NeonAdapter implements DataAdapter {
     };
   }
 
+  public async updateTitlePattern(pattern: string, type: TitlePatternType, updates: Partial<TitlePattern>): Promise<TitlePattern> {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (updates.pattern !== undefined) {
+      fields.push(`pattern = $${idx++}`);
+      values.push(updates.pattern);
+    }
+    if (updates.type !== undefined) {
+      fields.push(`type = $${idx++}`);
+      values.push(updates.type);
+    }
+    if (updates.level !== undefined) {
+      fields.push(`level = $${idx++}`);
+      values.push(updates.level);
+    }
+    if (updates.notes !== undefined) {
+      fields.push(`notes = $${idx++}`);
+      values.push(updates.notes);
+    }
+
+    if (fields.length === 0) {
+      const existing = await this.pool.query('SELECT * FROM title_patterns WHERE LOWER(pattern) = LOWER($1) AND type = $2', [pattern, type]);
+      if (existing.rows.length === 0) throw new Error(`Title pattern "${pattern}" (${type}) not found`);
+      const r = existing.rows[0];
+      return {
+        id: r.id,
+        pattern: r.pattern,
+        type: r.type as TitlePatternType,
+        level: r.level || null,
+        notes: r.notes || null,
+        created_at: r.created_at,
+      };
+    }
+
+    values.push(pattern);
+    const patternIdx = idx++;
+    values.push(type);
+    const typeIdx = idx++;
+
+    const query = `
+      UPDATE title_patterns
+      SET ${fields.join(', ')}
+      WHERE LOWER(pattern) = LOWER($${patternIdx}) AND type = $${typeIdx}
+      RETURNING id, pattern, type, level, notes, created_at::text as created_at
+    `;
+    const result = await this.pool.query(query, values);
+    if (result.rows.length === 0) {
+      throw new Error(`Title pattern "${pattern}" (${type}) not found`);
+    }
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      pattern: r.pattern,
+      type: r.type as TitlePatternType,
+      level: r.level || null,
+      notes: r.notes || null,
+      created_at: r.created_at,
+    };
+  }
+
   public async removeTitlePattern(pattern: string, type?: TitlePatternType): Promise<boolean> {
     let query = `DELETE FROM title_patterns WHERE LOWER(pattern) = LOWER($1)`;
     const params: unknown[] = [pattern];
@@ -240,6 +372,97 @@ export class NeonAdapter implements DataAdapter {
       notes: r.notes || null,
       created_at: r.created_at,
     }));
+  }
+
+  public async addSkill(data: { name: string; category?: string; importance?: string; notes?: string }): Promise<Skill> {
+    const query = `
+      INSERT INTO skills (name, category, importance, notes, created_at)
+      VALUES ($1, $2, $3, $4, NOW())
+      ON CONFLICT (name) DO UPDATE
+      SET category = COALESCE(EXCLUDED.category, skills.category),
+          importance = COALESCE(EXCLUDED.importance, skills.importance),
+          notes = COALESCE(EXCLUDED.notes, skills.notes)
+      RETURNING id, name, category, importance, notes, created_at::text as created_at
+    `;
+    const result = await this.pool.query(query, [
+      data.name,
+      data.category || null,
+      data.importance || 'preferred',
+      data.notes || null,
+    ]);
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      category: r.category || null,
+      importance: r.importance || null,
+      notes: r.notes || null,
+      created_at: r.created_at,
+    };
+  }
+
+  public async updateSkill(name: string, updates: Partial<Skill>): Promise<Skill> {
+    const fields: string[] = [];
+    const values: any[] = [];
+    let idx = 1;
+
+    if (updates.name !== undefined) {
+      fields.push(`name = $${idx++}`);
+      values.push(updates.name);
+    }
+    if (updates.category !== undefined) {
+      fields.push(`category = $${idx++}`);
+      values.push(updates.category);
+    }
+    if (updates.importance !== undefined) {
+      fields.push(`importance = $${idx++}`);
+      values.push(updates.importance);
+    }
+    if (updates.notes !== undefined) {
+      fields.push(`notes = $${idx++}`);
+      values.push(updates.notes);
+    }
+
+    if (fields.length === 0) {
+      const existing = await this.pool.query('SELECT * FROM skills WHERE LOWER(name) = LOWER($1)', [name]);
+      if (existing.rows.length === 0) throw new Error(`Skill "${name}" not found`);
+      const r = existing.rows[0];
+      return {
+        id: r.id,
+        name: r.name,
+        category: r.category || null,
+        importance: r.importance || null,
+        notes: r.notes || null,
+        created_at: r.created_at,
+      };
+    }
+
+    values.push(name);
+    const query = `
+      UPDATE skills
+      SET ${fields.join(', ')}
+      WHERE LOWER(name) = LOWER($${idx})
+      RETURNING id, name, category, importance, notes, created_at::text as created_at
+    `;
+    const result = await this.pool.query(query, values);
+    if (result.rows.length === 0) {
+      throw new Error(`Skill "${name}" not found`);
+    }
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      name: r.name,
+      category: r.category || null,
+      importance: r.importance || null,
+      notes: r.notes || null,
+      created_at: r.created_at,
+    };
+  }
+
+  public async removeSkill(name: string): Promise<boolean> {
+    const query = `DELETE FROM skills WHERE LOWER(name) = LOWER($1)`;
+    const result = await this.pool.query(query, [name]);
+    return (result.rowCount ?? 0) > 0;
   }
 
   // --- Scoring Rubric ---
@@ -450,6 +673,46 @@ export class NeonAdapter implements DataAdapter {
     }));
   }
 
+  public async listQueue(filters?: { status?: QueueStatus; company_name?: string; limit?: number }): Promise<QueueEntry[]> {
+    let query = `
+      SELECT id, url, company_name, status, notes,
+             created_at::text as created_at,
+             updated_at::text as updated_at
+      FROM crawl_queue
+    `;
+    const params: unknown[] = [];
+    const whereClauses: string[] = [];
+    let paramIndex = 1;
+
+    if (filters?.status) {
+      whereClauses.push(`status = $${paramIndex++}`);
+      params.push(filters.status);
+    }
+    if (filters?.company_name) {
+      whereClauses.push(`LOWER(company_name) = LOWER($${paramIndex++})`);
+      params.push(filters.company_name);
+    }
+    if (whereClauses.length > 0) {
+      query += ` WHERE ${whereClauses.join(' AND ')}`;
+    }
+    query += ` ORDER BY created_at DESC`;
+    if (filters?.limit && filters.limit > 0) {
+      query += ` LIMIT $${paramIndex++}`;
+      params.push(filters.limit);
+    }
+
+    const result = await this.pool.query(query, params);
+    return result.rows.map(r => ({
+      id: r.id,
+      url: r.url,
+      company_name: r.company_name,
+      status: r.status as QueueStatus,
+      notes: r.notes || null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    }));
+  }
+
   public async updateQueueStatus(url: string, status: QueueStatus, notes?: string): Promise<QueueEntry> {
     const query = `
       UPDATE crawl_queue
@@ -578,8 +841,16 @@ export class NeonAdapter implements DataAdapter {
     let paramIndex = 1;
 
     if (filters?.status) {
-      whereClauses.push(`status = $${paramIndex++}`);
-      params.push(filters.status);
+      if (filters.status === 'in_progress') {
+        whereClauses.push(`status IN ($${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
+        params.push('in_progress', 'interviewing', 'in progress');
+      } else if (filters.status === 'closed') {
+        whereClauses.push(`status IN ($${paramIndex++}, $${paramIndex++}, $${paramIndex++})`);
+        params.push('closed', 'rejected', 'offer');
+      } else {
+        whereClauses.push(`status = $${paramIndex++}`);
+        params.push(filters.status);
+      }
     }
     if (filters?.company_name) {
       whereClauses.push(`LOWER(company_name) = LOWER($${paramIndex++})`);

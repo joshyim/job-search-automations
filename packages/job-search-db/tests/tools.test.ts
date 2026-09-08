@@ -10,12 +10,17 @@ describe('MCP Tools Registration & Invocation', () => {
       close: vi.fn(),
       listCompanies: vi.fn().mockResolvedValue([{ name: 'Stripe', careers_url: 'https://stripe.com', is_excluded: false }]),
       addCompany: vi.fn().mockResolvedValue({ name: 'Airbnb', careers_url: 'https://airbnb.com', is_excluded: false }),
+      updateCompany: vi.fn().mockResolvedValue({ name: 'Airbnb', careers_url: 'https://airbnb.com/jobs', is_excluded: false }),
       excludeCompany: vi.fn().mockResolvedValue({ name: 'OldCo', is_excluded: true }),
       getBatch: vi.fn().mockResolvedValue([{ name: 'Stripe', careers_url: 'https://stripe.com' }]),
       listTitlePatterns: vi.fn().mockResolvedValue([{ pattern: 'Staff Engineer', type: 'include' }]),
       addTitlePattern: vi.fn().mockResolvedValue({ pattern: 'Principal Engineer', type: 'include' }),
+      updateTitlePattern: vi.fn().mockResolvedValue({ pattern: 'Staff Engineer', type: 'include', level: 'Staff' }),
       removeTitlePattern: vi.fn().mockResolvedValue(true),
       listSkills: vi.fn().mockResolvedValue([{ name: 'TypeScript', category: 'Languages' }]),
+      addSkill: vi.fn().mockResolvedValue({ name: 'TypeScript', category: 'Languages', importance: 'core' }),
+      updateSkill: vi.fn().mockResolvedValue({ name: 'TypeScript', importance: 'P1' }),
+      removeSkill: vi.fn().mockResolvedValue(true),
       getScoringRubric: vi.fn().mockResolvedValue([{ dimension: 'Title match', weight: 25 }]),
       updateRubricDimension: vi.fn().mockResolvedValue({ dimension: 'Title match', weight: 30 }),
       addRubricDimension: vi.fn().mockResolvedValue({ dimension: 'New Dim', weight: 10 }),
@@ -23,6 +28,7 @@ describe('MCP Tools Registration & Invocation', () => {
       checkUrlExists: vi.fn().mockResolvedValue({ exists: true }),
       addToQueue: vi.fn().mockResolvedValue({ url: 'https://example.com/job', status: 'pending' }),
       getPendingQueue: vi.fn().mockResolvedValue([{ url: 'https://example.com/job', status: 'pending' }]),
+      listQueue: vi.fn().mockResolvedValue([{ url: 'https://example.com/job', status: 'pending' }]),
       updateQueueStatus: vi.fn().mockResolvedValue({ url: 'https://example.com/job', status: 'assessed' }),
       addCandidate: vi.fn().mockResolvedValue({ job_title: 'Staff Engineer', score: 9.0, status: 'new' }),
       updateCandidateStatus: vi.fn().mockResolvedValue({ url: 'https://example.com', status: 'applied' }),
@@ -43,12 +49,17 @@ describe('MCP Tools Registration & Invocation', () => {
     const expectedTools = [
       'list_companies',
       'add_company',
+      'update_company',
       'exclude_company',
       'get_batch',
       'list_title_patterns',
       'add_title_pattern',
+      'update_title_pattern',
       'remove_title_pattern',
       'list_skills',
+      'add_skill',
+      'update_skill',
+      'remove_skill',
       'get_scoring_rubric',
       'update_rubric_dimension',
       'add_rubric_dimension',
@@ -56,6 +67,7 @@ describe('MCP Tools Registration & Invocation', () => {
       'check_url_exists',
       'add_to_queue',
       'get_pending_queue',
+      'list_queue',
       'update_queue_status',
       'add_candidate',
       'update_candidate_status',
@@ -117,5 +129,67 @@ describe('MCP Tools Registration & Invocation', () => {
       summary: 'Run completed',
     });
     expect(adapter.logRun).toHaveBeenCalled();
+  });
+
+  it('invokes update_company, update_title_pattern, skill tools, and list_queue properly', async () => {
+    const server = new McpServer({ name: 'test-server', version: '0.1.0' });
+    const adapter = createMockAdapter();
+    registerAllTools(server, adapter);
+
+    // update_company
+    const updateCompanyTool = (server as any)._registeredTools['update_company'];
+    await updateCompanyTool.handler({
+      current_name: 'Airbnb',
+      careers_url: 'https://airbnb.com/jobs',
+      is_excluded: false,
+    });
+    expect(adapter.updateCompany).toHaveBeenCalledWith('Airbnb', {
+      careers_url: 'https://airbnb.com/jobs',
+      is_excluded: false,
+    });
+
+    // update_title_pattern
+    const updateTitlePatternTool = (server as any)._registeredTools['update_title_pattern'];
+    await updateTitlePatternTool.handler({
+      current_pattern: 'Staff Engineer',
+      current_type: 'include',
+      level: 'Staff',
+    });
+    expect(adapter.updateTitlePattern).toHaveBeenCalledWith('Staff Engineer', 'include', {
+      level: 'Staff',
+    });
+
+    // add_skill
+    const addSkillTool = (server as any)._registeredTools['add_skill'];
+    await addSkillTool.handler({
+      name: 'TypeScript',
+      category: 'Languages',
+      importance: 'core',
+    });
+    expect(adapter.addSkill).toHaveBeenCalledWith({
+      name: 'TypeScript',
+      category: 'Languages',
+      importance: 'core',
+    });
+
+    // update_skill
+    const updateSkillTool = (server as any)._registeredTools['update_skill'];
+    await updateSkillTool.handler({
+      name: 'TypeScript',
+      importance: 'P1',
+    });
+    expect(adapter.updateSkill).toHaveBeenCalledWith('TypeScript', {
+      importance: 'P1',
+    });
+
+    // remove_skill
+    const removeSkillTool = (server as any)._registeredTools['remove_skill'];
+    await removeSkillTool.handler({ name: 'TypeScript' });
+    expect(adapter.removeSkill).toHaveBeenCalledWith('TypeScript');
+
+    // list_queue
+    const listQueueTool = (server as any)._registeredTools['list_queue'];
+    await listQueueTool.handler({ status: 'pending' });
+    expect(adapter.listQueue).toHaveBeenCalledWith({ status: 'pending' });
   });
 });
