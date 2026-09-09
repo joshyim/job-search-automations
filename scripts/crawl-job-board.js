@@ -7,7 +7,7 @@
 // using lightweight native HTTP fetch and public ATS APIs.
 //
 // Zero-browser: runs cleanly in constrained sandbox environments
-// using native HTTP fetch and ATS endpoints (no Chromium or Playwright required).
+// using native HTTP fetch and public ATS endpoints.
 //
 // Usage:
 //   node crawl-job-board.js <url> [--keyword <term>] [--json]
