@@ -1,7 +1,7 @@
 ---
 name: job-search-lead-gen
 description: Orchestrate the job search pipeline - select a batch of companies, then crawl and assess each one sequentially. Use when scanning for new job postings or running the daily job search pipeline.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium).
+compatibility: Requires Node.js (v18+). Harness-agnostic.
 ---
 
 # Job Search - Lead Gen (Orchestrator)

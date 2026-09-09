@@ -1,7 +1,7 @@
 ---
 name: company-search
 description: Discover companies actively hiring for target roles and add qualified matches to the target companies list via MCP. Use to expand company coverage across YC, BuiltIn, Wellfound, and LinkedIn.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium).
+compatibility: Requires Node.js (v18+). Harness-agnostic.
 ---
 
 # Company Search

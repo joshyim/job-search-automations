@@ -46,24 +46,50 @@ job-search-automation/
 ## Prerequisites
 
 - **Node.js**: Version 18 or higher.
-- **Playwright Chromium**: For job board scraping:
-  ```bash
-  npx playwright install chromium
-  ```
-- **Optional**: Neon PostgreSQL connection string (if running in Neon mode).
+- **Optional**: Neon PostgreSQL connection string (only if choosing Neon cloud mode; Local Markdown mode requires zero cloud services).
 
 ---
 
-## Installation & Setup
+## Quickstart: Claude Desktop (Cowork Mode)
 
-Install and configure the plugin in a single step using `setup.sh`:
+The simplest way to use this plugin is inside the **Claude Desktop App (Cowork mode)**:
 
-### Option A: Local Mode (Zero-Dependency Markdown Storage)
+1. Open your project folder in **Claude Desktop Cowork**.
+2. Tell Claude:
+   > *"Set up job search automation with my resume at /path/to/resume.pdf"*
+3. Tell Claude what roles or companies to target:
+   > *"Find companies hiring Staff Product Managers in San Francisco or Remote"*
+
+> [!NOTE]
+> **Zero-Configuration & Private**: Setup automatically installs required Node dependencies and compiles the local database server (`packages/job-search-db`). All pipeline data and your resume remain 100% private on your local computer (`~/.local/share/job-search-automation/`). No browser downloads or cloud databases required.
+
+---
+
+## Quickstart: Claude Code CLI
+
+If you use the **Claude Code CLI**, install it directly via the plugin marketplace:
+
+```text
+/plugin marketplace add joshyim/job-search-automations
+/plugin install job-search-automation@job-search-automations
+```
+
+Then tell Claude:
+> *"Set up job search automation with my resume at /path/to/resume.pdf"*
+
+---
+
+## Manual / Scripted Installation
+
+You can also run the setup orchestrator directly via terminal:
+
+### Option A: Local Mode (Zero-Dependency Markdown Storage) [Recommended]
 ```bash
 ./setup.sh --mode local --resume /path/to/your/resume.pdf -y
 ```
 - Stores data in `~/.local/share/job-search-automation/` as structured Markdown tables.
 - Writes configuration to `~/.config/job-search-automation/config.json`.
+- Automatically compiles the local database MCP server.
 
 ### Option B: Neon Mode (Cloud PostgreSQL)
 ```bash
@@ -73,16 +99,17 @@ Install and configure the plugin in a single step using `setup.sh`:
 - Automatically provisions tables and seeds the runtime scoring rubric.
 
 ### Interactive Mode
-Run `./setup.sh` without arguments to step through guided interactive configuration.
+Run `./setup.sh` without arguments to step through guided interactive configuration in your terminal.
 
 ---
 
 ## Updating Your Resume
 
-Update your active resume at any time without re-running setup:
+Update your active resume at any time:
 ```bash
 ./setup.sh --update-resume /path/to/new-resume.pdf
 ```
+
 
 ---
 

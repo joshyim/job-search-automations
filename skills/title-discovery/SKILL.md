@@ -1,7 +1,7 @@
 ---
 name: title-discovery
 description: Discover job titles that match key skills but are not yet in the target titles list, adding validated include/exclude patterns via MCP. Use to expand title coverage.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium).
+compatibility: Requires Node.js (v18+). Harness-agnostic.
 ---
 
 # Title Discovery

@@ -204,12 +204,12 @@ for skill in "${EXPECTED_SKILLS[@]}"; do
     fail "$skill: Name does not match directory name"
   fi
 
-  # Check compatibility frontmatter contains Node.js and Playwright
+  # Check compatibility frontmatter contains Node.js
   COMPAT_LINE=$(grep "^compatibility:" "$SKILL_FILE" || true)
-  if echo "$COMPAT_LINE" | grep -qi "node" && echo "$COMPAT_LINE" | grep -qi "playwright"; then
-    pass "$skill: Compatibility notes Node.js + Playwright requirement"
+  if echo "$COMPAT_LINE" | grep -qi "node"; then
+    pass "$skill: Compatibility notes Node.js requirement"
   else
-    fail "$skill: Compatibility missing Node.js + Playwright (found: '$COMPAT_LINE')"
+    fail "$skill: Compatibility missing Node.js (found: '$COMPAT_LINE')"
   fi
 
   # Ensure compatibility does not hardcode a single harness (must be harness-agnostic)
@@ -235,9 +235,42 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# Story 5: Security & Zero Committed Credentials
+# Story 5: Claude Code & Cowork Manifests Conformance
 # ------------------------------------------------------------------------------
-echo -e "\n${BOLD}[Story 5] Security & Zero Committed Credentials${RESET}"
+echo -e "\n${BOLD}[Story 5] Claude Code & Cowork Manifests Conformance${RESET}"
+
+assert_file_exists "$PLUGIN_ROOT/CLAUDE.md" "CLAUDE.md exists for Claude Cowork / Code guidance"
+assert_file_exists "$PLUGIN_ROOT/.claude-plugin/marketplace.json" ".claude-plugin/marketplace.json exists"
+assert_file_exists "$PLUGIN_ROOT/.claude-plugin/plugin.json" ".claude-plugin/plugin.json exists"
+assert_file_exists "$PLUGIN_ROOT/.mcp.json" ".mcp.json exists at plugin root"
+
+node -e "
+const fs = require('fs');
+const mp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/.claude-plugin/marketplace.json', 'utf-8'));
+if (!mp.name || !Array.isArray(mp.plugins) || mp.plugins.length === 0) {
+  console.error('Invalid marketplace.json structure');
+  process.exit(1);
+}
+const pl = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/.claude-plugin/plugin.json', 'utf-8'));
+if (pl.name !== 'job-search-automation' || !pl.version) {
+  console.error('Invalid .claude-plugin/plugin.json');
+  process.exit(1);
+}
+const mcp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/.mcp.json', 'utf-8'));
+if (!mcp.mcpServers || !mcp.mcpServers['job-search-db']) {
+  console.error('Invalid .mcp.json structure');
+  process.exit(1);
+}
+"
+pass ".claude-plugin/marketplace.json defines valid marketplace"
+pass ".claude-plugin/plugin.json defines valid plugin manifest"
+pass ".mcp.json correctly defines job-search-db server"
+
+
+# ------------------------------------------------------------------------------
+# Story 6: Security & Zero Committed Credentials
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 6] Security & Zero Committed Credentials${RESET}"
 
 FORBIDDEN_PATTERNS=(
   "client_secret"

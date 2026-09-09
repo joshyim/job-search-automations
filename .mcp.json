@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "job-search-db": {
+      "command": "node",
+      "args": [
+        "${PLUGIN_ROOT}/packages/job-search-db/dist/index.js"
+      ],
+      "cwd": "${PLUGIN_ROOT}/packages/job-search-db"
+    }
+  }
+}

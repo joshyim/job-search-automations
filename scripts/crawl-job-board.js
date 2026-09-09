@@ -1,9 +1,16 @@
 #!/usr/bin/env node
 
-// Usage: node crawl-job-board.js <url> [--keyword <term>] [--json]
+// ==============================================================================
+// crawl-job-board.js - Lightweight Job Board Crawler
 //
-// Launches a headless browser, navigates to a job board URL, waits for
-// JS-rendered content, and extracts all job listing links with titles.
+// Crawls company career pages and ATS boards (Greenhouse, Lever, Ashby, etc.)
+// using lightweight native HTTP fetch and public ATS APIs.
+//
+// Zero-browser by default: runs cleanly in constrained sandbox environments
+// without requiring Playwright or Chromium.
+//
+// Usage:
+//   node crawl-job-board.js <url> [--keyword <term>] [--json]
 //
 // Options:
 //   --keyword <term>   Filter listings to those containing <term> (case-insensitive)
@@ -18,19 +25,16 @@
 // Exit codes:
 //   0  Success
 //   1  Usage error or missing arguments
-//   2  Navigation or browser error
-
-const { chromium } = require("playwright");
+//   2  Network or parsing error
+// ==============================================================================
 
 const args = process.argv.slice(2);
-if (args.length === 0 || args[0] === "--help") {
-  console.error(
-    "Usage: node crawl-job-board.js <url> [--keyword <term>] [--json]"
-  );
+if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
+  console.error("Usage: node crawl-job-board.js <url> [--keyword <term>] [--json]");
   process.exit(1);
 }
 
-const url = args[0];
+const targetUrl = args[0];
 let keyword = null;
 let jsonOutput = false;
 
@@ -42,55 +46,245 @@ for (let i = 1; i < args.length; i++) {
   }
 }
 
-(async () => {
-  let browser;
+const USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+/**
+ * Strip HTML tags and normalize whitespace.
+ */
+function cleanText(html) {
+  if (!html) return "";
+  return html
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Attempt direct crawl via Greenhouse public API.
+ */
+async function crawlGreenhouse(url) {
+  const match = url.match(/greenhouse\.io\/(?:embed\/job_board\/|)([a-zA-Z0-9_\-]+)/i);
+  if (!match) return null;
+  const boardToken = match[1];
+  const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs`;
+
   try {
-    browser = await chromium.launch({ headless: true });
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    });
-    const page = await context.newPage();
+    const res = await fetch(apiUrl, { headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.jobs || !Array.isArray(data.jobs)) return null;
 
-    await page.goto(url, { waitUntil: "networkidle", timeout: 25000 });
-    await page.waitForTimeout(2000);
+    return data.jobs.map((job) => ({
+      title: job.title.trim(),
+      url: job.absolute_url || `https://boards.greenhouse.io/${boardToken}/jobs/${job.id}`,
+    }));
+  } catch {
+    return null;
+  }
+}
 
-    const listings = await page.evaluate(() => {
-      const results = [];
-      const seen = new Set();
+/**
+ * Attempt direct crawl via Lever public API.
+ */
+async function crawlLever(url) {
+  const match = url.match(/jobs\.lever\.co\/([a-zA-Z0-9_\-]+)/i);
+  if (!match) return null;
+  const boardToken = match[1];
+  const apiUrl = `https://api.lever.co/v0/postings/${boardToken}?mode=json`;
 
-      const links = document.querySelectorAll("a[href]");
-      for (const link of links) {
-        const href = link.href;
-        const text = (link.textContent || "").trim().replace(/\s+/g, " ");
+  try {
+    const res = await fetch(apiUrl, { headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) return null;
+    const postings = await res.json();
+    if (!Array.isArray(postings)) return null;
 
-        if (!text || text.length < 3 || text.length > 200) continue;
-        if (seen.has(href)) continue;
+    return postings.map((job) => ({
+      title: (job.text || job.title || "").trim(),
+      url: job.hostedUrl || `https://jobs.lever.co/${boardToken}/${job.id}`,
+    }));
+  } catch {
+    return null;
+  }
+}
 
-        const isJobLink =
-          /\/(jobs?|positions?|openings?|careers?|posting)s?\//i.test(href) ||
-          /\/(jobs?|positions?|openings?|posting)[?#]/i.test(href) ||
-          /ashbyhq\.com/.test(href) ||
-          /greenhouse\.io/.test(href) ||
-          /lever\.co/.test(href) ||
-          /workday\.com/.test(href) ||
-          /smartrecruiters\.com/.test(href) ||
-          /icims\.com/.test(href) ||
-          /myworkdayjobs\.com/.test(href);
+/**
+ * Attempt direct crawl via Ashby public API.
+ */
+async function crawlAshby(url) {
+  const match = url.match(/jobs\.ashbyhq\.com\/([a-zA-Z0-9_\-]+)/i);
+  if (!match) return null;
+  const boardToken = match[1];
+  const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${boardToken}`;
 
-        if (!isJobLink) continue;
+  try {
+    const res = await fetch(apiUrl, { headers: { "User-Agent": USER_AGENT } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.jobs || !Array.isArray(data.jobs)) return null;
 
-        const skipPatterns =
-          /\/(apply|login|sign-?in|register|privacy|terms|about|blog|faq)\b/i;
-        if (skipPatterns.test(href)) continue;
+    return data.jobs.map((job) => ({
+      title: job.title.trim(),
+      url: job.jobUrl || `https://jobs.ashbyhq.com/${boardToken}/${job.id}`,
+    }));
+  } catch {
+    return null;
+  }
+}
 
-        seen.add(href);
-        results.push({ title: text, url: href });
+/**
+ * Generic lightweight HTML crawler via standard HTTP fetch.
+ */
+async function crawlHtml(url) {
+  const res = await fetch(url, {
+    headers: { "User-Agent": USER_AGENT },
+    redirect: "follow",
+  });
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+  }
+
+  const html = await res.text();
+  const baseUrl = new URL(url);
+  const results = [];
+  const seen = new Set();
+
+  const linkRegex = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+
+  while ((match = linkRegex.exec(html)) !== null) {
+    const rawHref = match[1];
+    const innerHtml = match[2];
+    const text = cleanText(innerHtml);
+
+    if (!text || text.length < 3 || text.length > 200) continue;
+
+    let absoluteUrl;
+    try {
+      absoluteUrl = new URL(rawHref, baseUrl).href;
+    } catch {
+      continue;
+    }
+
+    if (seen.has(absoluteUrl)) continue;
+
+    const isJobLink =
+      /\/(jobs?|positions?|openings?|careers?|posting)s?\//i.test(absoluteUrl) ||
+      /\/(jobs?|positions?|openings?|posting)[?#]/i.test(absoluteUrl) ||
+      /ashbyhq\.com/.test(absoluteUrl) ||
+      /greenhouse\.io/.test(absoluteUrl) ||
+      /lever\.co/.test(absoluteUrl) ||
+      /workday\.com/.test(absoluteUrl) ||
+      /smartrecruiters\.com/.test(absoluteUrl) ||
+      /icims\.com/.test(absoluteUrl) ||
+      /myworkdayjobs\.com/.test(absoluteUrl);
+
+    if (!isJobLink) continue;
+
+    const skipPatterns =
+      /\/(apply|login|sign-?in|register|privacy|terms|about|blog|faq)\b/i;
+    if (skipPatterns.test(absoluteUrl)) continue;
+
+    seen.add(absoluteUrl);
+    results.push({ title: text, url: absoluteUrl });
+  }
+
+  return results;
+}
+
+/**
+ * Optional Playwright fallback: only invoked if Playwright + Chromium is
+ * already installed on the system, and native fetch yielded 0 results.
+ */
+async function tryPlaywrightFallback(url) {
+  try {
+    const { chromium } = require("playwright");
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const context = await browser.newContext({ userAgent: USER_AGENT });
+      const page = await context.newPage();
+      await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
+      await page.waitForTimeout(1500);
+
+      const listings = await page.evaluate(() => {
+        const results = [];
+        const seen = new Set();
+        const links = document.querySelectorAll("a[href]");
+        for (const link of links) {
+          const href = link.href;
+          const text = (link.textContent || "").trim().replace(/\s+/g, " ");
+          if (!text || text.length < 3 || text.length > 200) continue;
+          if (seen.has(href)) continue;
+
+          const isJobLink =
+            /\/(jobs?|positions?|openings?|careers?|posting)s?\//i.test(href) ||
+            /\/(jobs?|positions?|openings?|posting)[?#]/i.test(href) ||
+            /ashbyhq\.com|greenhouse\.io|lever\.co|workday\.com|smartrecruiters\.com|icims\.com/.test(href);
+
+          if (!isJobLink) continue;
+          const skipPatterns = /\/(apply|login|sign-?in|register|privacy|terms|about|blog|faq)\b/i;
+          if (skipPatterns.test(href)) continue;
+
+          seen.add(href);
+          results.push({ title: text, url: href });
+        }
+        return results;
+      });
+
+      return listings;
+    } finally {
+      await browser.close();
+    }
+  } catch {
+    // Playwright or Chromium not installed; safe to ignore
+    return null;
+  }
+}
+
+(async () => {
+  try {
+    let listings = null;
+
+    // 1. Check specialized ATS endpoints first
+    if (/greenhouse\.io/i.test(targetUrl)) {
+      listings = await crawlGreenhouse(targetUrl);
+    } else if (/lever\.co/i.test(targetUrl)) {
+      listings = await crawlLever(targetUrl);
+    } else if (/ashbyhq\.com/i.test(targetUrl)) {
+      listings = await crawlAshby(targetUrl);
+    }
+
+    // 2. Generic HTTP fetch if not ATS or ATS returned null
+    if (!listings || listings.length === 0) {
+      try {
+        const htmlResults = await crawlHtml(targetUrl);
+        if (htmlResults && htmlResults.length > 0) {
+          listings = htmlResults;
+        }
+      } catch (err) {
+        // Fall through to optional browser fallback or report error
       }
+    }
 
-      return results;
-    });
+    // 3. Optional browser fallback if 0 results
+    if (!listings || listings.length === 0) {
+      const browserResults = await tryPlaywrightFallback(targetUrl);
+      if (browserResults && browserResults.length > 0) {
+        listings = browserResults;
+      }
+    }
 
+    listings = listings || [];
+
+    // Filter by keyword if provided
     let filtered = listings;
     if (keyword) {
       filtered = listings.filter((l) =>
@@ -108,15 +302,14 @@ for (let i = 1; i < args.length; i++) {
 
     if (filtered.length === 0) {
       console.error(
-        `No listings found${keyword ? ` matching "${keyword}"` : ""} at ${url}`
+        `No listings found${keyword ? ` matching "${keyword}"` : ""} at ${targetUrl}`
       );
     } else {
       console.error(`Found ${filtered.length} listing(s)`);
     }
+    process.exit(0);
   } catch (err) {
-    console.error(`Error crawling ${url}: ${err.message}`);
+    console.error(`Error crawling ${targetUrl}: ${err.message}`);
     process.exit(2);
-  } finally {
-    if (browser) await browser.close();
   }
 })();

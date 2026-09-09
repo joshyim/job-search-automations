@@ -1,7 +1,7 @@
 ---
 name: pipeline-diagram
 description: Introspect current skill definitions, MCP tool surface, and data flow paths, then regenerate pipeline overview Mermaid diagrams. Use after modifying skills, MCP tools, or pipeline flows.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium).
+compatibility: Requires Node.js (v18+). Harness-agnostic.
 ---
 
 # Pipeline Diagram Generator

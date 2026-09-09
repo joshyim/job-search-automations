@@ -1,7 +1,7 @@
 ---
 name: job-search-assess
 description: Validate and score pending crawl-queue postings for a single company, then write qualifying results to the pipeline tracker. Designed to be invoked by the job-search-lead-gen orchestrator per company.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium).
+compatibility: Requires Node.js (v18+). Harness-agnostic.
 ---
 
 # Job Search - Assess (Single Company)

@@ -422,6 +422,17 @@ CONFIG_FILE="$(expand_path "$CONFIG_FILE")"
 write_config_json "$CONFIG_FILE" "$MODE" "$WORKFLOW_DATA_PATH" "$TARGET_RESUME"
 echo -e "${GREEN}[+] Configuration written to:${RESET} $CONFIG_FILE"
 
+# 4.1 Build MCP Database Server if dist is missing
+DB_DIR="$SCRIPT_DIR/packages/job-search-db"
+if [ -d "$DB_DIR" ] && [ ! -f "$DB_DIR/dist/index.js" ]; then
+  echo -e "${CYAN}[*] Notice: Installing dependencies and compiling job-search-db MCP server...${RESET}"
+  if [ ! -d "$DB_DIR/node_modules" ]; then
+    npm install --prefix "$DB_DIR" --silent
+  fi
+  npm run build --prefix "$DB_DIR" --silent
+  echo -e "${GREEN}[+] job-search-db MCP server successfully built.${RESET}"
+fi
+
 # 5. Run Migration if requested
 if [ -n "$MIGRATE_FROM" ]; then
   EXPANDED_MIGRATE="$(expand_path "$MIGRATE_FROM")"

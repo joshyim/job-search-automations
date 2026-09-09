@@ -1,0 +1,18 @@
+{
+  "name": "job-search-automations",
+  "owner": {
+    "name": "Josh Yim",
+    "email": "josh@joshyim.com"
+  },
+  "plugins": [
+    {
+      "name": "job-search-automation",
+      "description": "Skill-based automated job search pipeline with company discovery, career site scraping, and resume scoring.",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/joshyim/job-search-automations.git",
+        "path": "."
+      }
+    }
+  ]
+}

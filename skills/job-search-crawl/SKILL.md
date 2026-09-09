@@ -1,7 +1,7 @@
 ---
 name: job-search-crawl
 description: Crawl a single company's job board, match postings against target titles, and write matched results to the crawl queue. Designed to be invoked by the job-search-lead-gen orchestrator per company.
-compatibility: Requires Node.js and Playwright (npx playwright install chromium).
+compatibility: Requires Node.js (v18+). Uses lightweight ATS APIs and HTTP fetch.
 ---
 
 # Job Search - Crawl (Single Company)
@@ -21,7 +21,7 @@ This skill processes the single company passed via `$ARGUMENTS`. It expects the 
 Resolve `workflowDataPath` from `~/.config/job-search-automation/config.json` (default: `~/.local/share/job-search-automation`).
 Write ALL intermediate files to `<workflowDataPath>/tmp/<company-slug>/`. Create the directory if it does not exist. Never write temp files to the repository root or outside this directory.
 
-Primary method - the shared browser crawl script:
+Primary method - the shared lightweight crawl script:
 
 ```bash
 node scripts/crawl-job-board.js "<job-board-url>" --json
@@ -67,6 +67,7 @@ Return a structured summary:
 
 ## Gotchas
 
-- Most ATS platforms (Ashby, Greenhouse, Lever, Workday) are SPAs. Always use the shared browser crawl script (`scripts/crawl-job-board.js`).
+- Many ATS platforms (Ashby, Greenhouse, Lever) have direct API adapters in `scripts/crawl-job-board.js`.
+- If a custom careers site yields no listings via lightweight fetch, use Claude Code's native WebSearch / WebFetch.
 - Ashby API often truncates. Never rely on it as sole source.
 - Crawl output may concatenate title/department/location. Parse the title as text before the first department label.
