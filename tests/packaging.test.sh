@@ -135,6 +135,25 @@ assert_file_exists "$PLUGIN_ROOT/web/public/index.html" "web/ contains SPA sourc
 assert_file_exists "$PLUGIN_ROOT/web/public/styles.css" "web/ contains CSS styles (public/styles.css)"
 assert_file_exists "$PLUGIN_ROOT/web/public/app.js" "web/ contains client application (public/app.js)"
 assert_file_exists "$PLUGIN_ROOT/web/package.json" "web/ contains local server package.json"
+assert_file_exists "$PLUGIN_ROOT/web/scripts/start.js" "web/ contains scripts/start.js launcher"
+if [ -x "$PLUGIN_ROOT/web/scripts/start.js" ]; then
+  pass "web/scripts/start.js is marked executable"
+else
+  fail "web/scripts/start.js is not executable"
+fi
+
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/web/package.json', 'utf-8'));
+if (pkg.scripts && pkg.scripts.start === 'node scripts/start.js') {
+  process.exit(0);
+} else {
+  console.error('Expected start script to be node scripts/start.js, got: ' + (pkg.scripts && pkg.scripts.start));
+  process.exit(1);
+}
+"
+pass "web/package.json start script routes to node scripts/start.js"
+
 
 assert_file_exists "$PLUGIN_ROOT/schema.sql" "schema.sql canonical DDL exists at plugin root"
 assert_file_exists "$PLUGIN_ROOT/setup.sh" "setup.sh orchestrator exists at plugin root"
@@ -234,6 +253,14 @@ else
   fail "README.md missing /schedule documentation"
 fi
 
+# Check setup.sh job-search-ui build step
+if grep -Fq "packages/job-search-ui" "$PLUGIN_ROOT/setup.sh"; then
+  pass "setup.sh includes job-search-ui build step"
+else
+  fail "setup.sh missing job-search-ui build step"
+fi
+
+
 # ------------------------------------------------------------------------------
 # Story 5: Claude Code & Cowork Manifests Conformance
 # ------------------------------------------------------------------------------
@@ -293,6 +320,81 @@ done
 if [ $CLEAN_CREDENTIALS -eq 1 ]; then
   pass "Zero credentials or secrets detected in plugin manifests and skills"
 fi
+
+# ------------------------------------------------------------------------------
+# Story 7: Dashboard Build-on-First-Run (PRO-22)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 7] Dashboard Build-on-First-Run (PRO-22)${RESET}"
+
+START_JS="$PLUGIN_ROOT/web/scripts/start.js"
+if grep -Fq "Building dashboard for first run..." "$START_JS"; then
+  pass "scripts/start.js defines clear first-run notification message"
+else
+  fail "scripts/start.js missing first-run notification message"
+fi
+
+# Functional test: when dist is absent, verify build occurs and emits message
+UI_DIR="$PLUGIN_ROOT/packages/job-search-ui"
+TEMP_BACKUP="$UI_DIR/dist.test-backup.$$"
+
+if [ -d "$UI_DIR/dist" ]; then
+  mv "$UI_DIR/dist" "$TEMP_BACKUP"
+fi
+
+FIRST_RUN_LOG="$PLUGIN_ROOT/tests/fixtures/first_run_$$.log"
+node "$START_JS" --port 3987 > "$FIRST_RUN_LOG" 2>&1 &
+FIRST_PID=$!
+
+for _ in {1..30}; do
+  if [ -f "$UI_DIR/dist/server.js" ] && grep -Fq "Job Search Web UI running" "$FIRST_RUN_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+kill -TERM "$FIRST_PID" 2>/dev/null || true
+wait "$FIRST_PID" 2>/dev/null || true
+
+if [ -f "$UI_DIR/dist/server.js" ]; then
+  pass "First-run build successfully created dist/server.js"
+else
+  fail "First-run build failed to create dist/server.js"
+fi
+
+if grep -Fq "Building dashboard for first run..." "$FIRST_RUN_LOG" 2>/dev/null; then
+  pass "First-run execution printed 'Building dashboard for first run...'"
+else
+  fail "First-run execution did not print expected message"
+fi
+rm -f "$FIRST_RUN_LOG"
+
+# Functional test: subsequent run should skip build step
+SUBSEQUENT_LOG="$PLUGIN_ROOT/tests/fixtures/subsequent_$$.log"
+node "$START_JS" --port 3986 > "$SUBSEQUENT_LOG" 2>&1 &
+SUB_PID=$!
+
+for _ in {1..20}; do
+  if grep -Fq "Job Search Web UI running" "$SUBSEQUENT_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+kill -TERM "$SUB_PID" 2>/dev/null || true
+wait "$SUB_PID" 2>/dev/null || true
+
+if grep -Fq "Building dashboard for first run..." "$SUBSEQUENT_LOG" 2>/dev/null; then
+  fail "Subsequent run unexpectedly triggered build step"
+else
+  pass "Subsequent run skipped build step as dist/ already exists"
+fi
+rm -f "$SUBSEQUENT_LOG"
+
+# Clean up backup
+if [ -d "$TEMP_BACKUP" ]; then
+  rm -rf "$TEMP_BACKUP"
+fi
+
 
 # ------------------------------------------------------------------------------
 # Summary

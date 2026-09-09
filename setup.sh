@@ -433,6 +433,17 @@ if [ -d "$DB_DIR" ] && [ ! -f "$DB_DIR/dist/index.js" ]; then
   echo -e "${GREEN}[+] job-search-db MCP server successfully built.${RESET}"
 fi
 
+# 4.2 Build UI Dashboard if dist is missing
+UI_DIR="$SCRIPT_DIR/packages/job-search-ui"
+if [ -d "$UI_DIR" ] && [ ! -f "$UI_DIR/dist/server.js" ]; then
+  echo -e "${CYAN}[*] Notice: Installing dependencies and compiling job-search-ui dashboard...${RESET}"
+  if [ ! -d "$UI_DIR/node_modules" ]; then
+    npm install --prefix "$UI_DIR" --silent
+  fi
+  npm run build --prefix "$UI_DIR" --silent
+  echo -e "${GREEN}[+] job-search-ui dashboard successfully built.${RESET}"
+fi
+
 # 5. Run Migration if requested
 if [ -n "$MIGRATE_FROM" ]; then
   EXPANDED_MIGRATE="$(expand_path "$MIGRATE_FROM")"
