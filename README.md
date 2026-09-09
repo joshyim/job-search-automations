@@ -1,6 +1,17 @@
 # Job Search Automation Plugin (`job-search-automation`)
 
-An automated job search pipeline conforming to the [Agent Plugins specification v1.0.0](https://github.com/agentplugins/agent-plugins-spec) and [Agent Skills specification](https://agentskills.io/specification). Features dual-mode storage (Local Markdown and Neon PostgreSQL), a standard Model Context Protocol (MCP) data server, an interactive browser crawler, runtime scoring rubric normalization, and a bundled local web dashboard.
+Find real opportunities before the crowd does. Stop wasting hours scrolling expired jobs on job boards.
+
+This automated job search skills plugin runs inside Claude Code or ChatGPT co-work. You direct how the search runs: tell your agent which companies to track, which to avoid, and what matters to you. It goes beyond simple keyword searches to discover companies and roles matched to your actual skills, career history, and preferences.
+
+Put your AI to work with flexible, user-directed loops:
+
+- **Company Discovery**: Find target employers tailored to your profile. Track companies you want; filter out the ones you don't.
+- **Title & Skill Discovery**: Go beyond rigid job titles. Uncover roles that match your real skills and experience, not just keywords.
+- **Direct Job Crawler**: Search company career sites directly for fresh openings before aggregators post them.
+- **Dedicated Web UI**: Launch a local dashboard straight from your Claude Code or ChatGPT session to manage preferences, adjust your scoring rubric, and review candidates visually.
+
+You set the rules. Your AI does the hunting.
 
 ---
 
