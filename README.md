@@ -153,13 +153,17 @@ The bundled `job-search-db` MCP server provides uniform data access across both 
 The plugin includes a local single-page dashboard for inspecting pipeline statistics, managing target companies, reviewing candidates, and customizing the scoring rubric:
 
 ```bash
-# Build and start the dashboard dev server:
+# Build and start the dashboard server (default port 3847):
 npm run ui
 
 # Or launch development mode:
 npm run ui:dev
+
+# Specify a custom port via CLI flag or environment variable:
+npm run ui -- --port 3850
+PORT=3850 npm run ui
 ```
-Access the dashboard at `http://localhost:3000`.
+Access the dashboard at `http://localhost:3847`. If port `3847` is already in use by another process, the server automatically detects the conflict, increments to the next available free port (e.g., `3848`), and prints the bound URL to stdout.
 
 ---
 

@@ -31,18 +31,35 @@ interface ServerOptions {
   configPath?: string;
 }
 
+const DEFAULT_PORT = 3847;
+
 function parseArgs(): ServerOptions {
   const args = process.argv.slice(2);
-  let port = parseInt(process.env.PORT || '3847', 10);
+  let rawPort: string | undefined = process.env.PORT;
   let configPath: string | undefined = process.env.JOB_SEARCH_CONFIG_PATH;
 
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--port' && args[i + 1]) {
-      port = parseInt(args[i + 1], 10);
+    const arg = args[i];
+    if (arg === '--port' && args[i + 1]) {
+      rawPort = args[i + 1];
       i++;
-    } else if (args[i] === '--config' && args[i + 1]) {
+    } else if (arg.startsWith('--port=')) {
+      rawPort = arg.slice('--port='.length);
+    } else if (arg === '--config' && args[i + 1]) {
       configPath = args[i + 1];
       i++;
+    } else if (arg.startsWith('--config=')) {
+      configPath = arg.slice('--config='.length);
+    }
+  }
+
+  let port = DEFAULT_PORT;
+  if (rawPort) {
+    const parsed = parseInt(rawPort, 10);
+    if (!isNaN(parsed) && parsed > 0 && parsed <= 65535) {
+      port = parsed;
+    } else {
+      console.warn(`[UI Server] Invalid port "${rawPort}" provided, falling back to default ${DEFAULT_PORT}.`);
     }
   }
 
@@ -277,20 +294,34 @@ class JobSearchUIServer {
       this.handleStatic(req, res);
     });
 
-    const tryListen = (port: number): Promise<number> => {
+    const MAX_PORT_RETRIES = 100;
+
+    const tryListen = (port: number, attempt = 0): Promise<number> => {
+      if (attempt >= MAX_PORT_RETRIES) {
+        return Promise.reject(
+          new Error(`Could not find an available port after ${MAX_PORT_RETRIES} attempts (tried ${this.options.port}-${port - 1}).`)
+        );
+      }
+
       return new Promise((resolve, reject) => {
-        this.httpServer!.once('error', (err: any) => {
+        const onListening = () => {
+          this.httpServer!.removeListener('error', onError);
+          resolve(port);
+        };
+
+        const onError = (err: any) => {
+          this.httpServer!.removeListener('listening', onListening);
           if (err.code === 'EADDRINUSE') {
             console.warn(`[UI Server] Port ${port} is in use, trying port ${port + 1}...`);
-            resolve(tryListen(port + 1));
+            resolve(tryListen(port + 1, attempt + 1));
           } else {
             reject(err);
           }
-        });
+        };
 
-        this.httpServer!.listen(port, '127.0.0.1', () => {
-          resolve(port);
-        });
+        this.httpServer!.once('listening', onListening);
+        this.httpServer!.once('error', onError);
+        this.httpServer!.listen(port, '127.0.0.1');
       });
     };
 
@@ -299,8 +330,13 @@ class JobSearchUIServer {
 
     console.log(`\n=============================================================`);
     console.log(`🚀 Job Search Web UI running at: http://localhost:${activePort}`);
+    console.log(`   Dashboard running at http://localhost:${activePort}`);
     console.log(`   Connected to MCP Data Layer: job-search-db`);
     console.log(`=============================================================\n`);
+  }
+
+  public getPort(): number {
+    return this.options.port;
   }
 
   public async stop(): Promise<void> {

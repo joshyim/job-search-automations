@@ -395,6 +395,118 @@ if [ -d "$TEMP_BACKUP" ]; then
   rm -rf "$TEMP_BACKUP"
 fi
 
+# ------------------------------------------------------------------------------
+# Story 8: Port-Conflict Handling & Dynamic Fallback (PRO-23)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 8] Port-Conflict Handling & Dynamic Fallback (PRO-23)${RESET}"
+
+# Test 1: Occupy port 3970 with a mock server, start dashboard on 3970, verify fallback to 3971
+MOCK_LOG="$PLUGIN_ROOT/tests/fixtures/mock_server_$$.log"
+node -e '
+  const http = require("http");
+  const server = http.createServer((req, res) => res.end("mock"));
+  server.listen(3970, "127.0.0.1", () => {
+    console.log("MOCK_READY");
+  });
+' > "$MOCK_LOG" 2>&1 &
+MOCK_PID=$!
+
+# Wait for mock server to be ready
+for _ in {1..20}; do
+  if grep -Fq "MOCK_READY" "$MOCK_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.2
+done
+
+CONFLICT_LOG="$PLUGIN_ROOT/tests/fixtures/conflict_$$.log"
+node "$START_JS" --port 3970 > "$CONFLICT_LOG" 2>&1 &
+CONFLICT_PID=$!
+
+for _ in {1..30}; do
+  if grep -Fq "Dashboard running at http://localhost:3971" "$CONFLICT_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+if grep -Fq "Port 3970 is in use, trying port 3971..." "$CONFLICT_LOG" 2>/dev/null; then
+  pass "UI server detected port 3970 conflict and attempted next port"
+else
+  fail "UI server failed to log port conflict detection"
+fi
+
+if grep -Fq "Dashboard running at http://localhost:3971" "$CONFLICT_LOG" 2>/dev/null; then
+  pass "UI server bound to next available port 3971 and printed Dashboard running URL"
+else
+  fail "UI server did not print bound Dashboard running URL for port 3971"
+fi
+
+if grep -Fq "Job Search Web UI running at: http://localhost:3971" "$CONFLICT_LOG" 2>/dev/null; then
+  pass "UI server printed canonical Job Search Web UI running URL banner"
+else
+  fail "UI server missing Job Search Web UI running URL banner"
+fi
+
+# Verify /api/health reports the dynamically bound port
+HEALTH_RES=$(curl -s http://127.0.0.1:3971/api/health 2>/dev/null || true)
+if [[ "$HEALTH_RES" =~ \"port\":3971 ]] && [[ "$HEALTH_RES" =~ \"status\":\"ok\" ]]; then
+  pass "/api/health reports status ok and dynamically resolved port 3971"
+else
+  fail "/api/health failed to report expected port: $HEALTH_RES"
+fi
+
+# Clean up conflict test processes
+kill -TERM "$CONFLICT_PID" 2>/dev/null || true
+wait "$CONFLICT_PID" 2>/dev/null || true
+kill -TERM "$MOCK_PID" 2>/dev/null || true
+wait "$MOCK_PID" 2>/dev/null || true
+rm -f "$MOCK_LOG" "$CONFLICT_LOG"
+
+# Test 2: PORT environment variable override
+ENV_LOG="$PLUGIN_ROOT/tests/fixtures/env_port_$$.log"
+PORT=3975 node "$START_JS" > "$ENV_LOG" 2>&1 &
+ENV_PID=$!
+
+for _ in {1..30}; do
+  if grep -Fq "Dashboard running at http://localhost:3975" "$ENV_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+kill -TERM "$ENV_PID" 2>/dev/null || true
+wait "$ENV_PID" 2>/dev/null || true
+
+if grep -Fq "Dashboard running at http://localhost:3975" "$ENV_LOG" 2>/dev/null; then
+  pass "UI server respected PORT environment variable (3975)"
+else
+  fail "UI server failed to respect PORT environment variable"
+fi
+rm -f "$ENV_LOG"
+
+# Test 3: --port=<val> syntax override
+SYNTAX_LOG="$PLUGIN_ROOT/tests/fixtures/syntax_port_$$.log"
+node "$START_JS" --port=3976 > "$SYNTAX_LOG" 2>&1 &
+SYNTAX_PID=$!
+
+for _ in {1..30}; do
+  if grep -Fq "Dashboard running at http://localhost:3976" "$SYNTAX_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+kill -TERM "$SYNTAX_PID" 2>/dev/null || true
+wait "$SYNTAX_PID" 2>/dev/null || true
+
+if grep -Fq "Dashboard running at http://localhost:3976" "$SYNTAX_LOG" 2>/dev/null; then
+  pass "UI server respected --port=<value> command line argument (3976)"
+else
+  fail "UI server failed to respect --port=<value> syntax"
+fi
+rm -f "$SYNTAX_LOG"
+
 
 # ------------------------------------------------------------------------------
 # Summary
