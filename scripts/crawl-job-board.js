@@ -6,8 +6,8 @@
 // Crawls company career pages and ATS boards (Greenhouse, Lever, Ashby, etc.)
 // using lightweight native HTTP fetch and public ATS APIs.
 //
-// Zero-browser by default: runs cleanly in constrained sandbox environments
-// without requiring Playwright or Chromium.
+// Zero-browser: runs cleanly in constrained sandbox environments
+// using native HTTP fetch and ATS endpoints (no Chromium or Playwright required).
 //
 // Usage:
 //   node crawl-job-board.js <url> [--keyword <term>] [--json]
@@ -200,55 +200,6 @@ async function crawlHtml(url) {
   return results;
 }
 
-/**
- * Optional Playwright fallback: only invoked if Playwright + Chromium is
- * already installed on the system, and native fetch yielded 0 results.
- */
-async function tryPlaywrightFallback(url) {
-  try {
-    const { chromium } = require("playwright");
-    const browser = await chromium.launch({ headless: true });
-    try {
-      const context = await browser.newContext({ userAgent: USER_AGENT });
-      const page = await context.newPage();
-      await page.goto(url, { waitUntil: "networkidle", timeout: 20000 });
-      await page.waitForTimeout(1500);
-
-      const listings = await page.evaluate(() => {
-        const results = [];
-        const seen = new Set();
-        const links = document.querySelectorAll("a[href]");
-        for (const link of links) {
-          const href = link.href;
-          const text = (link.textContent || "").trim().replace(/\s+/g, " ");
-          if (!text || text.length < 3 || text.length > 200) continue;
-          if (seen.has(href)) continue;
-
-          const isJobLink =
-            /\/(jobs?|positions?|openings?|careers?|posting)s?\//i.test(href) ||
-            /\/(jobs?|positions?|openings?|posting)[?#]/i.test(href) ||
-            /ashbyhq\.com|greenhouse\.io|lever\.co|workday\.com|smartrecruiters\.com|icims\.com/.test(href);
-
-          if (!isJobLink) continue;
-          const skipPatterns = /\/(apply|login|sign-?in|register|privacy|terms|about|blog|faq)\b/i;
-          if (skipPatterns.test(href)) continue;
-
-          seen.add(href);
-          results.push({ title: text, url: href });
-        }
-        return results;
-      });
-
-      return listings;
-    } finally {
-      await browser.close();
-    }
-  } catch {
-    // Playwright or Chromium not installed; safe to ignore
-    return null;
-  }
-}
-
 (async () => {
   try {
     let listings = null;
@@ -270,15 +221,7 @@ async function tryPlaywrightFallback(url) {
           listings = htmlResults;
         }
       } catch (err) {
-        // Fall through to optional browser fallback or report error
-      }
-    }
-
-    // 3. Optional browser fallback if 0 results
-    if (!listings || listings.length === 0) {
-      const browserResults = await tryPlaywrightFallback(targetUrl);
-      if (browserResults && browserResults.length > 0) {
-        listings = browserResults;
+        // Fall through to report empty results
       }
     }
 

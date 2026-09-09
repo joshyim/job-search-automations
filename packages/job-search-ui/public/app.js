@@ -366,7 +366,7 @@
         direction TB
         ORCHESTRATOR["job-search-lead-gen<br/>Select batch & coordinate pipeline execution"]
         CRAWL["job-search-crawl<br/>Collect, match & deduplicate job postings"]
-        CRAWLER["scripts/crawl-job-board.js<br/>Headless Playwright crawler"]
+        CRAWLER["scripts/crawl-job-board.js<br/>Lightweight ATS / HTTP crawler"]
         ASSESS["job-search-assess<br/>Validate posting & score against rubric"]
         RUBRIC["references/scoring-rubric.md<br/>Weighted evaluation dimensions"]
         ORCHESTRATOR -->|Phase A: crawl| CRAWL
@@ -490,15 +490,15 @@
     },
     'crawl-detail': {
       title: 'Workflow Visualization — Crawl Execution Loop',
-      subtitle: 'Headless Playwright crawl script dumps raw postings to ephemeral storage; crawl skill filters by title patterns and deduplicates via MCP.',
+      subtitle: 'Lightweight ATS/HTTP crawl script dumps raw postings to ephemeral storage; crawl skill filters by title patterns and deduplicates via MCP.',
       diagram: `flowchart TB
     EXT["Job board &<br/>web search"]
-    SCRIPT["scripts/crawl-job-board.js<br/>(Playwright headless)"]
+    SCRIPT["scripts/crawl-job-board.js<br/>(Lightweight crawler)"]
     CRAWL["job-search-crawl<br/>(Per-company crawler)"]
     TMP["Ephemeral Storage<br/>tmp/company-slug/*.json"]
     MCP["MCP Server<br/>(job-search-db)"]
 
-    CRAWL -->|executes headless crawl| SCRIPT
+    CRAWL -->|executes crawl script| SCRIPT
     EXT -->|page HTML & job cards| SCRIPT
     SCRIPT -->|dump raw postings JSON| TMP
     TMP -->|parse & normalize| CRAWL

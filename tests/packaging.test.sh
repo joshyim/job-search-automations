@@ -116,7 +116,7 @@ for skill in "${EXPECTED_SKILLS[@]}"; do
   assert_file_exists "$PLUGIN_ROOT/skills/$skill/SKILL.md" "Skill '$skill' folder and SKILL.md exist"
 done
 
-assert_file_exists "$PLUGIN_ROOT/scripts/crawl-job-board.js" "Single shared Playwright crawler exists at scripts/crawl-job-board.js"
+assert_file_exists "$PLUGIN_ROOT/scripts/crawl-job-board.js" "Single shared crawler exists at scripts/crawl-job-board.js"
 DUP_CRAWLERS=$(find "$PLUGIN_ROOT/skills" -name "crawl-job-board.js" | wc -l | tr -d ' ')
 if [ "$DUP_CRAWLERS" -eq 0 ]; then
   pass "No duplicate crawler scripts exist in skills directory"

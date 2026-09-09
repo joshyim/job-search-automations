@@ -33,7 +33,7 @@ job-search-automation/
 │   ├── title-discovery/        # Target title & pattern discovery
 │   └── pipeline-diagram/       # Mermaid pipeline diagram generator
 ├── scripts/                    # Shared operational utilities
-│   ├── crawl-job-board.js      # Playwright browser job board scraper
+│   ├── crawl-job-board.js      # Lightweight ATS API & HTTP job board scraper
 │   ├── init-neon.js            # Neon schema & default rubric seeder
 │   └── migrate.js              # Markdown-to-Neon migration engine
 ├── templates/                  # Scaffolding templates & default rubric
