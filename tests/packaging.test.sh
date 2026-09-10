@@ -509,6 +509,350 @@ rm -f "$SYNTAX_LOG"
 
 
 # ------------------------------------------------------------------------------
+# Story 9: MCP Server Build-on-First-Run & Connection Resiliency (PRO-24)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 9] MCP Server Build-on-First-Run & Connection Resiliency (PRO-24)${RESET}"
+
+DB_START_JS="$PLUGIN_ROOT/packages/job-search-db/scripts/start.js"
+assert_file_exists "$DB_START_JS" "packages/job-search-db/scripts/start.js launcher exists"
+
+if [ -x "$DB_START_JS" ]; then
+  pass "packages/job-search-db/scripts/start.js is marked executable"
+else
+  fail "packages/job-search-db/scripts/start.js is not executable"
+fi
+
+# Verify mcp.json and .mcp.json use scripts/start.js
+node -e "
+const fs = require('fs');
+const mcp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/mcp.json', 'utf-8'));
+const claudeMcp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/.mcp.json', 'utf-8'));
+
+const mcpArg = mcp.mcpServers['job-search-db'].args[0];
+const claudeMcpArg = claudeMcp.mcpServers['job-search-db'].args[0];
+
+if (!mcpArg.endsWith('scripts/start.js')) {
+  console.error('mcp.json arg does not end with scripts/start.js: ' + mcpArg);
+  process.exit(1);
+}
+if (!claudeMcpArg.endsWith('scripts/start.js')) {
+  console.error('.mcp.json arg does not end with scripts/start.js: ' + claudeMcpArg);
+  process.exit(1);
+}
+"
+pass "mcp.json and .mcp.json route job-search-db through scripts/start.js"
+
+# Verify packages/job-search-db/package.json start script
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/packages/job-search-db/package.json', 'utf-8'));
+if (pkg.scripts && pkg.scripts.start === 'node scripts/start.js') {
+  process.exit(0);
+} else {
+  console.error('Expected start script to be node scripts/start.js, got: ' + (pkg.scripts && pkg.scripts.start));
+  process.exit(1);
+}
+"
+pass "packages/job-search-db/package.json start script routes to node scripts/start.js"
+
+# Functional test: when dist is absent, verify build occurs and emits diagnostic to stderr only
+DB_PKG_DIR="$PLUGIN_ROOT/packages/job-search-db"
+DB_TEMP_BACKUP="$DB_PKG_DIR/dist.test-backup.$$"
+
+if [ -d "$DB_PKG_DIR/dist" ]; then
+  mv "$DB_PKG_DIR/dist" "$DB_TEMP_BACKUP"
+fi
+
+DB_FIRST_RUN_STDOUT="$PLUGIN_ROOT/tests/fixtures/db_first_stdout_$$.log"
+DB_FIRST_RUN_STDERR="$PLUGIN_ROOT/tests/fixtures/db_first_stderr_$$.log"
+
+# Run start.js via stdio sending initialize request
+node -e "
+const { spawn } = require('child_process');
+const fs = require('fs');
+
+const child = spawn(process.execPath, ['$DB_START_JS'], {
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+
+const stdoutStream = fs.createWriteStream('$DB_FIRST_RUN_STDOUT');
+const stderrStream = fs.createWriteStream('$DB_FIRST_RUN_STDERR');
+
+child.stdout.pipe(stdoutStream);
+child.stderr.pipe(stderrStream);
+
+const initReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'test-harness', version: '1.0.0' }
+  }
+}) + '\n';
+
+child.stdin.write(initReq);
+
+setTimeout(() => {
+  child.kill('SIGTERM');
+}, 6000);
+" || true
+
+if [ -f "$DB_PKG_DIR/dist/index.js" ]; then
+  pass "First-run build successfully compiled job-search-db dist/index.js"
+else
+  fail "First-run build failed to compile job-search-db dist/index.js"
+fi
+
+if grep -Fq "Building job-search-db MCP server for first run..." "$DB_FIRST_RUN_STDERR" 2>/dev/null; then
+  pass "First-run build notification printed to stderr"
+else
+  fail "First-run build notification missing from stderr"
+fi
+
+# Verify stdout received valid JSON-RPC and zero non-JSON build logs (no stdout pollution)
+node -e "
+const fs = require('fs');
+const content = fs.readFileSync('$DB_FIRST_RUN_STDOUT', 'utf-8').trim();
+if (!content) {
+  console.error('Empty stdout from MCP server');
+  process.exit(1);
+}
+const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
+for (const line of lines) {
+  try {
+    const json = JSON.parse(line);
+    if (!json.jsonrpc || json.jsonrpc !== '2.0') {
+      console.error('Non-JSONRPC line on stdout: ' + line);
+      process.exit(1);
+    }
+  } catch (err) {
+    console.error('Non-JSON build pollution detected on stdout: ' + line);
+    process.exit(1);
+  }
+}
+"
+pass "stdout is strictly valid JSON-RPC with zero build-log pollution"
+
+rm -f "$DB_FIRST_RUN_STDOUT" "$DB_FIRST_RUN_STDERR"
+
+# Functional test: subsequent run should skip build step
+DB_SUBSEQUENT_STDERR="$PLUGIN_ROOT/tests/fixtures/db_subsequent_stderr_$$.log"
+
+node -e "
+const { spawn } = require('child_process');
+const fs = require('fs');
+
+const child = spawn(process.execPath, ['$DB_START_JS'], {
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+
+const stderrStream = fs.createWriteStream('$DB_SUBSEQUENT_STDERR');
+child.stderr.pipe(stderrStream);
+
+const initReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'test-harness', version: '1.0.0' }
+  }
+}) + '\n';
+
+child.stdin.write(initReq);
+
+setTimeout(() => {
+  child.kill('SIGTERM');
+}, 3000);
+" || true
+
+if grep -Fq "Building job-search-db MCP server for first run..." "$DB_SUBSEQUENT_STDERR" 2>/dev/null; then
+  fail "Subsequent MCP start unexpectedly triggered build step"
+else
+  pass "Subsequent MCP start skipped build step as dist/ already exists"
+fi
+rm -f "$DB_SUBSEQUENT_STDERR"
+
+# Clean up backup
+if [ -d "$DB_TEMP_BACKUP" ]; then
+  rm -rf "$DB_TEMP_BACKUP"
+fi
+
+# Functional test: MCP tools availability test via stdio protocol
+node -e "
+const { spawn } = require('child_process');
+
+const child = spawn(process.execPath, ['$DB_START_JS'], {
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+
+let stdoutData = '';
+let foundTools = false;
+
+child.stdout.on('data', (chunk) => {
+  stdoutData += chunk.toString();
+  const lines = stdoutData.split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const msg = JSON.parse(line.trim());
+      if (msg.id === 2 && msg.result && Array.isArray(msg.result.tools)) {
+        const toolNames = msg.result.tools.map(t => t.name);
+        const expected = [
+          'get_candidates',
+          'add_candidate',
+          'update_candidate_status',
+          'list_companies',
+          'add_company',
+          'update_company',
+          'exclude_company',
+          'get_batch',
+          'get_scoring_rubric',
+          'update_rubric_dimension',
+          'list_queue',
+          'add_to_queue',
+          'get_pending_queue',
+          'update_queue_status',
+          'list_skills',
+          'add_skill',
+          'list_title_patterns',
+          'add_title_pattern',
+          'log_run',
+          'get_recent_runs'
+        ];
+        const missing = expected.filter(e => !toolNames.includes(e));
+        if (missing.length === 0) {
+          foundTools = true;
+          child.kill('SIGTERM');
+        } else {
+          console.error('Missing expected tools: ' + missing.join(', '));
+          process.exit(1);
+        }
+      }
+    } catch {}
+  }
+});
+
+const initReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'test-harness', version: '1.0.0' }
+  }
+}) + '\n';
+
+const notifyReq = JSON.stringify({
+  jsonrpc: '2.0',
+  method: 'notifications/initialized'
+}) + '\n';
+
+const toolsReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 2,
+  method: 'tools/list',
+  params: {}
+}) + '\n';
+
+child.stdin.write(initReq);
+child.stdin.write(notifyReq);
+child.stdin.write(toolsReq);
+
+child.on('exit', () => {
+  if (foundTools) {
+    process.exit(0);
+  } else {
+    console.error('Failed to receive complete tools list from MCP server');
+    process.exit(1);
+  }
+});
+
+setTimeout(() => {
+  child.kill('SIGKILL');
+}, 6000);
+"
+pass "MCP stdio server connected and responded with all expected tools"
+
+# Functional test: Zero-config first-run resilience (missing config file auto-initializes without crash)
+ISOLATED_HOME="$PLUGIN_ROOT/tests/fixtures/isolated_home_$$"
+mkdir -p "$ISOLATED_HOME"
+
+node -e "
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
+
+const child = spawn(process.execPath, ['$DB_START_JS'], {
+  stdio: ['pipe', 'pipe', 'pipe'],
+  env: {
+    ...process.env,
+    HOME: '$ISOLATED_HOME',
+    USERPROFILE: '$ISOLATED_HOME'
+  }
+});
+
+let stdoutData = '';
+let initializedOk = false;
+
+child.stdout.on('data', (chunk) => {
+  stdoutData += chunk.toString();
+  if (stdoutData.includes('\"get_candidates\"')) {
+    initializedOk = true;
+    child.kill('SIGTERM');
+  }
+});
+
+const initReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'zero-config-test', version: '1.0.0' }
+  }
+}) + '\n';
+
+const notifyReq = JSON.stringify({
+  jsonrpc: '2.0',
+  method: 'notifications/initialized'
+}) + '\n';
+
+const toolsReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 2,
+  method: 'tools/list',
+  params: {}
+}) + '\n';
+
+child.stdin.write(initReq);
+child.stdin.write(notifyReq);
+child.stdin.write(toolsReq);
+
+child.on('exit', () => {
+  const autoCfg = path.join('$ISOLATED_HOME', '.config', 'job-search-automation', 'config.json');
+  if (initializedOk && fs.existsSync(autoCfg)) {
+    process.exit(0);
+  } else {
+    console.error('Zero-config initialization failed. Output:', stdoutData);
+    process.exit(1);
+  }
+});
+
+setTimeout(() => {
+  child.kill('SIGKILL');
+}, 6000);
+"
+pass "MCP server gracefully auto-initializes default local config on fresh zero-config start"
+rm -rf "$ISOLATED_HOME"
+
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo -e "\n${CYAN}==============================================================${RESET}"
