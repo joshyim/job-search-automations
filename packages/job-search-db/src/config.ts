@@ -37,18 +37,51 @@ export function loadConfig(configPath?: string): ServerConfig {
   const resolvedPath = configPath || process.env.JOB_SEARCH_CONFIG_PATH || getDefaultConfigPath();
 
   if (!fs.existsSync(resolvedPath)) {
-    throw new Error(
-      `Configuration file not found at: ${resolvedPath}\n` +
-      `Please create the config file with either:\n` +
-      `  {\n` +
-      `    "mode": "local",\n` +
-      `    "workflowDataPath": "/path/to/data"\n` +
-      `  }\n` +
-      `or\n` +
-      `  {\n` +
-      `    "mode": "neon"\n` +
-      `  }`
-    );
+    if (configPath || process.env.JOB_SEARCH_CONFIG_PATH) {
+      throw new Error(
+        `Configuration file not found at: ${resolvedPath}\n` +
+        `Please create the config file with either:\n` +
+        `  {\n` +
+        `    "mode": "local",\n` +
+        `    "workflowDataPath": "/path/to/data"\n` +
+        `  }\n` +
+        `or\n` +
+        `  {\n` +
+        `    "mode": "neon"\n` +
+        `  }`
+      );
+    }
+
+    // Auto-create default local configuration for seamless zero-config first run
+    const defaultWdp = path.join(os.homedir(), '.local', 'share', 'job-search-automation');
+    process.stderr.write(`[job-search-db] No configuration file found at ${resolvedPath}. Initializing default local configuration...\n`);
+
+    try {
+      fs.mkdirSync(path.dirname(resolvedPath), { recursive: true });
+      fs.mkdirSync(defaultWdp, { recursive: true });
+      const defaultConfig = {
+        $schema: 'https://json-schema.org/draft-07/schema#',
+        version: '1.0.0',
+        mode: 'local',
+        workflowDataPath: defaultWdp,
+        updatedAt: new Date().toISOString(),
+      };
+      fs.writeFileSync(resolvedPath, JSON.stringify(defaultConfig, null, 2), 'utf-8');
+      return {
+        mode: 'local',
+        workflowDataPath: defaultWdp,
+        keychainService: DEFAULT_KEYCHAIN_SERVICE,
+        keychainAccount: DEFAULT_KEYCHAIN_ACCOUNT,
+      };
+    } catch (err: any) {
+      process.stderr.write(`[job-search-db] Warning: Could not write default config to ${resolvedPath}: ${err.message}. Using in-memory default.\n`);
+      return {
+        mode: 'local',
+        workflowDataPath: defaultWdp,
+        keychainService: DEFAULT_KEYCHAIN_SERVICE,
+        keychainAccount: DEFAULT_KEYCHAIN_ACCOUNT,
+      };
+    }
   }
 
   let rawContent: string;

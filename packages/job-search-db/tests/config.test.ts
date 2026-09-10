@@ -65,4 +65,21 @@ describe('Config Loader', () => {
     const nonExistentPath = path.join(tempDir, 'does-not-exist.json');
     expect(() => loadConfig(nonExistentPath)).toThrow(/Configuration file not found at/);
   });
+
+  it('automatically initializes default local config when running without custom path and no config exists', () => {
+    const originalHomedir = os.homedir;
+    try {
+      (os as any).homedir = () => tempDir;
+      const config = loadConfig();
+      expect(config.mode).toBe('local');
+      expect(config.workflowDataPath).toBe(path.join(tempDir, '.local', 'share', 'job-search-automation'));
+      const generatedConfigPath = path.join(tempDir, '.config', 'job-search-automation', 'config.json');
+      expect(fs.existsSync(generatedConfigPath)).toBe(true);
+      const parsed = JSON.parse(fs.readFileSync(generatedConfigPath, 'utf-8'));
+      expect(parsed.mode).toBe('local');
+      expect(parsed.workflowDataPath).toBe(path.join(tempDir, '.local', 'share', 'job-search-automation'));
+    } finally {
+      (os as any).homedir = originalHomedir;
+    }
+  });
 });
