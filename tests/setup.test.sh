@@ -219,6 +219,66 @@ assert_file_exists "$MIGRATION_TARGET/job-candidates.md" "Target candidates mark
 assert_contains "$(cat "$MIGRATION_TARGET/job-candidates.md")" "Staff Backend Engineer" "Migrated candidate into candidates file"
 
 # ------------------------------------------------------------------------------
+# Test 9: Selected-Directory .job-search/ SQLite Setup & Fast-Path Update (PRO-27)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 9] Selected-Directory .job-search/ SQLite Setup (PRO-27)${RESET}"
+PROJECT_DIR="$TMP_TEST_DIR/project-workspace"
+mkdir -p "$PROJECT_DIR"
+
+SETUP_DIR_OUT="$("$ROOT_DIR/setup.sh" \
+  --directory "$PROJECT_DIR" \
+  --resume "$FIXTURE_RESUME" \
+  -y)"
+
+assert_file_exists "$PROJECT_DIR/.job-search/config.json" ".job-search/config.json created in project directory"
+assert_file_exists "$PROJECT_DIR/.job-search/job-search.sqlite" ".job-search/job-search.sqlite created"
+assert_file_exists "$PROJECT_DIR/.job-search/resume.pdf" ".job-search/resume.pdf created"
+assert_file_exists "$PROJECT_DIR/.job-search/.gitignore" ".job-search/.gitignore created"
+
+# Verify relative path configuration
+CFG_DB_PATH="$(grep '"databasePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"databasePath":[[:space:]]*"([^"]+)".*/\1/')"
+CFG_RES_PATH="$(grep '"resumePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"resumePath":[[:space:]]*"([^"]+)".*/\1/')"
+assert_equals "./job-search.sqlite" "$CFG_DB_PATH" "config.json stores relative databasePath"
+assert_equals "./resume.pdf" "$CFG_RES_PATH" "config.json stores relative resumePath"
+
+# Verify SQLite database has seeded rubric
+RUBRIC_COUNT="$(node -e "
+const { DatabaseSync } = require('node:sqlite');
+const db = new DatabaseSync('$PROJECT_DIR/.job-search/job-search.sqlite');
+const count = db.prepare('SELECT COUNT(*) as count FROM scoring_rubric').get().count;
+console.log(count);
+db.close();
+")"
+assert_equals "4" "$RUBRIC_COUNT" "job-search.sqlite contains 4 seeded rubric dimensions"
+
+# Test Fast-Path Resume Update using --directory
+UPDATE_DIR_OUT="$("$ROOT_DIR/setup.sh" --update-resume "$FIXTURE_RESUME_V2" --directory "$PROJECT_DIR")"
+assert_contains "$UPDATE_DIR_OUT" "Resume successfully updated" "Fast-path update succeeds with --directory"
+CMP_DIR_RES_DIFF="$(diff "$FIXTURE_RESUME_V2" "$PROJECT_DIR/.job-search/resume.pdf" || true)"
+assert_equals "" "$CMP_DIR_RES_DIFF" "Resume contents in .job-search/ updated to v2"
+
+# Test SQLite migration into project workspace
+MIGRATE_SQLITE_OUT="$(node "$ROOT_DIR/scripts/migrate.js" \
+  --source "$FIXTURE_VAULT" \
+  --directory "$PROJECT_DIR")"
+assert_contains "$MIGRATE_SQLITE_OUT" "=== Migration Summary ===" "Outputs migration summary for SQLite target"
+
+COMPANY_COUNT="$(node -e "
+const { DatabaseSync } = require('node:sqlite');
+const db = new DatabaseSync('$PROJECT_DIR/.job-search/job-search.sqlite');
+const count = db.prepare('SELECT COUNT(*) as count FROM companies').get().count;
+console.log(count);
+db.close();
+")"
+if [ "$COMPANY_COUNT" -gt 0 ]; then
+  echo -e "  ${GREEN}✓${RESET} Companies migrated directly into SQLite ($COMPANY_COUNT found)"
+  TEST_PASSED=$((TEST_PASSED + 1))
+else
+  echo -e "  ${RED}✗${RESET} No companies migrated into SQLite"
+  TEST_FAILED=$((TEST_FAILED + 1))
+fi
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo -e "\n=============================================================="

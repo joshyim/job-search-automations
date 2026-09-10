@@ -18,6 +18,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -183,6 +184,8 @@ async function main() {
   const args = process.argv.slice(2);
   let sourceDir = null;
   let mode = null;
+  let directory = null;
+  let databasePath = null;
   let workflowDataPath = null;
   let connectionString = null;
   let isDryRun = args.includes('--dry-run');
@@ -194,6 +197,10 @@ async function main() {
       sourceDir = args[++i];
     } else if (args[i] === '--mode' && args[i + 1]) {
       mode = args[++i];
+    } else if ((args[i] === '--directory' || args[i] === '-d') && args[i + 1]) {
+      directory = args[++i];
+    } else if (args[i] === '--database' && args[i + 1]) {
+      databasePath = args[++i];
     } else if (args[i] === '--workflow-data-path' && args[i + 1]) {
       workflowDataPath = args[++i];
     } else if (args[i] === '--connection-string' && args[i + 1]) {
@@ -388,112 +395,348 @@ async function main() {
 
   // Perform migration write
   if (mode === 'local') {
-    const resolvedWdp = path.resolve(workflowDataPath.replace(/^~(?=$|\/|\\)/, os.homedir()));
-    if (!fs.existsSync(resolvedWdp)) {
-      fs.mkdirSync(resolvedWdp, { recursive: true });
+    let targetSqlitePath = null;
+    let resolvedWdp = null;
+
+    if (databasePath) {
+      targetSqlitePath = path.resolve(databasePath.replace(/^~(?=$|\/|\\)/, os.homedir()));
+    } else if (directory) {
+      const resolvedDir = path.resolve(directory.replace(/^~(?=$|\/|\\)/, os.homedir()));
+      targetSqlitePath = resolvedDir.endsWith('.job-search')
+        ? path.join(resolvedDir, 'job-search.sqlite')
+        : path.join(resolvedDir, '.job-search', 'job-search.sqlite');
+      resolvedWdp = path.dirname(targetSqlitePath);
+    } else if (workflowDataPath) {
+      resolvedWdp = path.resolve(workflowDataPath.replace(/^~(?=$|\/|\\)/, os.homedir()));
+      if (resolvedWdp.endsWith('.sqlite')) {
+        targetSqlitePath = resolvedWdp;
+      } else if (fs.existsSync(path.join(resolvedWdp, '.job-search', 'job-search.sqlite'))) {
+        targetSqlitePath = path.join(resolvedWdp, '.job-search', 'job-search.sqlite');
+      } else if (path.basename(resolvedWdp) === '.job-search') {
+        targetSqlitePath = path.join(resolvedWdp, 'job-search.sqlite');
+      } else {
+        targetSqlitePath = path.join(resolvedWdp, 'job-search.sqlite');
+      }
     }
 
-    // Target Companies
-    if (parsedCompanies.length > 0) {
-      const targetPath = path.join(resolvedWdp, 'target-companies.md');
-      const rows = parsedCompanies.map(c => ({
-        'Company': c.name,
-        'Careers URL': c.careersUrl,
-        'Excluded': c.isExcluded ? 'Yes' : 'No',
-        'Notes': c.notes,
-        'Last Searched': c.lastSearched,
-      }));
-      const content = `# Target Companies\n\n` + formatMarkdownTable(['Company', 'Careers URL', 'Excluded', 'Notes', 'Last Searched'], rows);
-      fs.writeFileSync(targetPath, content, 'utf-8');
+    if (targetSqlitePath) {
+      fs.mkdirSync(path.dirname(targetSqlitePath), { recursive: true });
+      const db = new DatabaseSync(targetSqlitePath);
+      db.exec('PRAGMA journal_mode = WAL;');
+      db.exec('PRAGMA foreign_keys = ON;');
+
+      // Create SQLite schema
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            careers_url TEXT NOT NULL,
+            is_excluded INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            last_searched_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_companies_last_searched ON companies(last_searched_at ASC) WHERE is_excluded = 0;
+
+        CREATE TABLE IF NOT EXISTS title_patterns (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            pattern TEXT NOT NULL,
+            type TEXT NOT NULL CHECK (type IN ('include', 'exclude')),
+            level TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            CONSTRAINT uq_pattern_type UNIQUE (pattern, type)
+        );
+
+        CREATE TABLE IF NOT EXISTS skills (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            category TEXT,
+            importance TEXT DEFAULT 'preferred',
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS scoring_rubric (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dimension TEXT NOT NULL UNIQUE,
+            weight REAL NOT NULL,
+            poor_description TEXT,
+            moderate_description TEXT,
+            strong_description TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS crawl_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL UNIQUE,
+            company_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assessed', 'skipped')),
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_crawl_queue_company_status ON crawl_queue(company_name, status);
+
+        CREATE TABLE IF NOT EXISTS candidates (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            company_name TEXT NOT NULL,
+            job_title TEXT NOT NULL,
+            url TEXT NOT NULL UNIQUE,
+            location TEXT,
+            score REAL,
+            breakdown TEXT,
+            status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer')),
+            notes TEXT,
+            discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+            applied_at TEXT,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_candidates_score ON candidates(score DESC);
+        CREATE INDEX IF NOT EXISTS idx_candidates_status ON candidates(status);
+
+        CREATE TABLE IF NOT EXISTS run_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            mode TEXT NOT NULL,
+            companies_processed TEXT NOT NULL DEFAULT '[]',
+            urls_queued INTEGER NOT NULL DEFAULT 0,
+            candidates_scored INTEGER NOT NULL DEFAULT 0,
+            summary TEXT,
+            details TEXT DEFAULT '{}'
+        );
+        CREATE INDEX IF NOT EXISTS idx_run_logs_timestamp ON run_logs(timestamp DESC);
+      `);
+
+      // 1. Companies
+      const insertCompany = db.prepare(`
+        INSERT INTO companies (name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT (name) DO UPDATE SET
+          careers_url = excluded.careers_url,
+          is_excluded = excluded.is_excluded,
+          notes = excluded.notes,
+          last_searched_at = excluded.last_searched_at,
+          updated_at = datetime('now')
+      `);
+      for (const c of parsedCompanies) {
+        insertCompany.run(c.name, c.careersUrl, c.isExcluded ? 1 : 0, c.notes || null, c.lastSearched || null);
+      }
+
+      // 2. Title Patterns
+      const insertTitle = db.prepare(`
+        INSERT INTO title_patterns (pattern, type, level, notes, created_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT (pattern, type) DO UPDATE SET
+          level = excluded.level,
+          notes = excluded.notes
+      `);
+      for (const t of parsedTitles) {
+        insertTitle.run(t.pattern, t.type, t.level || null, t.notes || null);
+      }
+
+      // 3. Skills
+      const insertSkill = db.prepare(`
+        INSERT INTO skills (name, category, importance, notes, created_at)
+        VALUES (?, ?, ?, ?, datetime('now'))
+        ON CONFLICT (name) DO UPDATE SET
+          category = excluded.category,
+          importance = excluded.importance,
+          notes = excluded.notes
+      `);
+      for (const s of parsedSkills) {
+        insertSkill.run(s.skill, s.category || null, s.importance || 'preferred', s.notes || null);
+      }
+
+      // 4. Rubric
+      const insertRubric = db.prepare(`
+        INSERT INTO scoring_rubric (dimension, weight, poor_description, moderate_description, strong_description, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT (dimension) DO UPDATE SET
+          weight = excluded.weight,
+          poor_description = excluded.poor_description,
+          moderate_description = excluded.moderate_description,
+          strong_description = excluded.strong_description,
+          updated_at = datetime('now')
+      `);
+      for (const r of parsedRubric) {
+        insertRubric.run(r.dimension, r.weight, r.poor_description || null, r.moderate_description || null, r.strong_description || null);
+      }
+
+      // 5. Crawl Queue
+      const insertQueue = db.prepare(`
+        INSERT INTO crawl_queue (url, company_name, status, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        ON CONFLICT (url) DO UPDATE SET
+          company_name = excluded.company_name,
+          status = excluded.status,
+          notes = excluded.notes,
+          updated_at = datetime('now')
+      `);
+      for (const q of parsedQueue) {
+        insertQueue.run(q.url, q.company, q.status || 'pending', q.notes || null);
+      }
+
+      // 6. Candidates
+      const insertCandidate = db.prepare(`
+        INSERT INTO candidates (company_name, job_title, url, location, score, breakdown, status, notes, discovered_at, applied_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, datetime('now'))
+        ON CONFLICT (url) DO UPDATE SET
+          company_name = excluded.company_name,
+          job_title = excluded.job_title,
+          location = excluded.location,
+          score = excluded.score,
+          breakdown = excluded.breakdown,
+          status = excluded.status,
+          notes = excluded.notes,
+          applied_at = excluded.applied_at,
+          updated_at = datetime('now')
+      `);
+      for (const cd of parsedCandidates) {
+        insertCandidate.run(
+          cd.company,
+          cd.jobTitle,
+          cd.url,
+          cd.location || null,
+          cd.score || null,
+          cd.breakdown ? JSON.stringify({ summary: cd.breakdown }) : null,
+          cd.status || 'new',
+          cd.notes || null,
+          cd.appliedAt || null
+        );
+      }
+
+      // 7. Logs
+      const insertLog = db.prepare(`
+        INSERT INTO run_logs (timestamp, mode, companies_processed, urls_queued, candidates_scored, summary, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const l of parsedLogs) {
+        insertLog.run(
+          l.timestamp || new Date().toISOString(),
+          l.mode || 'local',
+          JSON.stringify([l.companies]),
+          l.urlsQueued || 0,
+          l.candidatesScored || 0,
+          l.summary || null,
+          l.details ? JSON.stringify({ details: l.details }) : '{}'
+        );
+      }
+
+      db.close();
+      console.log(`\x1b[32m[+] Successfully migrated records into SQLite database at: ${targetSqlitePath}\x1b[0m`);
     }
 
-    // Titles & Skills
-    if (parsedTitles.length > 0 || parsedSkills.length > 0) {
-      const targetPath = path.join(resolvedWdp, 'target-job-titles-and-skills.md');
-      const titleRows = parsedTitles.map(t => ({
-        'Pattern': t.pattern,
-        'Type': t.type,
-        'Level': t.level,
-        'Notes': t.notes,
-      }));
-      const skillRows = parsedSkills.map(s => ({
-        'Skill': s.skill,
-        'Category': s.category,
-        'Importance': s.importance,
-        'Notes': s.notes,
-      }));
-      let content = `# Target Job Titles and Skills\n\n## Title Patterns\n\n`;
-      content += formatMarkdownTable(['Pattern', 'Type', 'Level', 'Notes'], titleRows);
-      content += `\n## Skills\n\n`;
-      content += formatMarkdownTable(['Skill', 'Category', 'Importance', 'Notes'], skillRows);
-      fs.writeFileSync(targetPath, content, 'utf-8');
-    }
+    // Also write markdown files if workflowDataPath was specified as a directory
+    if (resolvedWdp && !resolvedWdp.endsWith('.sqlite')) {
+      if (!fs.existsSync(resolvedWdp)) {
+        fs.mkdirSync(resolvedWdp, { recursive: true });
+      }
 
-    // Scoring Rubric
-    if (parsedRubric.length > 0) {
-      const targetPath = path.join(resolvedWdp, 'scoring-rubric.md');
-      const rows = parsedRubric.map(r => ({
-        'Dimension': r.dimension,
-        'Weight': `${r.weight}%`,
-        'Poor (1-2)': r.poor_description,
-        'Moderate (3)': r.moderate_description,
-        'Strong (4-5)': r.strong_description,
-      }));
-      const content = `# Scoring Rubric\n\n` + formatMarkdownTable(['Dimension', 'Weight', 'Poor (1-2)', 'Moderate (3)', 'Strong (4-5)'], rows);
-      fs.writeFileSync(targetPath, content, 'utf-8');
-    }
+      // Target Companies
+      if (parsedCompanies.length > 0) {
+        const targetPath = path.join(resolvedWdp, 'target-companies.md');
+        const rows = parsedCompanies.map((c) => ({
+          Company: c.name,
+          'Careers URL': c.careersUrl,
+          Excluded: c.isExcluded ? 'Yes' : 'No',
+          Notes: c.notes,
+          'Last Searched': c.lastSearched,
+        }));
+        const content = `# Target Companies\n\n` + formatMarkdownTable(['Company', 'Careers URL', 'Excluded', 'Notes', 'Last Searched'], rows);
+        fs.writeFileSync(targetPath, content, 'utf-8');
+      }
 
-    // Crawl Queue
-    if (parsedQueue.length > 0) {
-      const targetPath = path.join(resolvedWdp, 'crawl-queue.md');
-      const rows = parsedQueue.map(q => ({
-        'URL': q.url,
-        'Company': q.company,
-        'Status': q.status,
-        'Notes': q.notes,
-        'Queued At': q.queuedAt,
-      }));
-      const content = `# Crawl Queue\n\n` + formatMarkdownTable(['URL', 'Company', 'Status', 'Notes', 'Queued At'], rows);
-      fs.writeFileSync(targetPath, content, 'utf-8');
-    }
+      // Titles & Skills
+      if (parsedTitles.length > 0 || parsedSkills.length > 0) {
+        const targetPath = path.join(resolvedWdp, 'target-job-titles-and-skills.md');
+        const titleRows = parsedTitles.map((t) => ({
+          Pattern: t.pattern,
+          Type: t.type,
+          Level: t.level,
+          Notes: t.notes,
+        }));
+        const skillRows = parsedSkills.map((s) => ({
+          Skill: s.skill,
+          Category: s.category,
+          Importance: s.importance,
+          Notes: s.notes,
+        }));
+        let content = `# Target Job Titles and Skills\n\n## Title Patterns\n\n`;
+        content += formatMarkdownTable(['Pattern', 'Type', 'Level', 'Notes'], titleRows);
+        content += `\n## Skills\n\n`;
+        content += formatMarkdownTable(['Skill', 'Category', 'Importance', 'Notes'], skillRows);
+        fs.writeFileSync(targetPath, content, 'utf-8');
+      }
 
-    // Candidates
-    if (parsedCandidates.length > 0) {
-      const targetPath = path.join(resolvedWdp, 'job-candidates.md');
-      const rows = parsedCandidates.map(c => ({
-        'Company': c.company,
-        'Job Title': c.jobTitle,
-        'URL': c.url,
-        'Location': c.location,
-        'Score': String(c.score),
-        'Breakdown': c.breakdown,
-        'Status': c.status,
-        'Discovered At': c.discoveredAt,
-        'Applied At': c.appliedAt,
-        'Notes': c.notes,
-      }));
-      const content = `# Job Candidates\n\n` + formatMarkdownTable(['Company', 'Job Title', 'URL', 'Location', 'Score', 'Breakdown', 'Status', 'Discovered At', 'Applied At', 'Notes'], rows);
-      fs.writeFileSync(targetPath, content, 'utf-8');
-    }
+      // Scoring Rubric
+      if (parsedRubric.length > 0) {
+        const targetPath = path.join(resolvedWdp, 'scoring-rubric.md');
+        const rows = parsedRubric.map((r) => ({
+          Dimension: r.dimension,
+          Weight: `${r.weight}%`,
+          'Poor (1-2)': r.poor_description,
+          'Moderate (3)': r.moderate_description,
+          'Strong (4-5)': r.strong_description,
+        }));
+        const content = `# Scoring Rubric\n\n` + formatMarkdownTable(['Dimension', 'Weight', 'Poor (1-2)', 'Moderate (3)', 'Strong (4-5)'], rows);
+        fs.writeFileSync(targetPath, content, 'utf-8');
+      }
 
-    // Run Logs
-    if (parsedLogs.length > 0) {
-      const targetPath = path.join(resolvedWdp, 'logs.md');
-      const rows = parsedLogs.map(l => ({
-        'Timestamp': l.timestamp,
-        'Mode': l.mode,
-        'Companies Processed': l.companies,
-        'URLs Queued': String(l.urlsQueued),
-        'Candidates Scored': String(l.candidatesScored),
-        'Summary': l.summary,
-        'Details': l.details,
-      }));
-      const content = `# Pipeline Run Logs\n\n` + formatMarkdownTable(['Timestamp', 'Mode', 'Companies Processed', 'URLs Queued', 'Candidates Scored', 'Summary', 'Details'], rows);
-      fs.writeFileSync(targetPath, content, 'utf-8');
+      // Crawl Queue
+      if (parsedQueue.length > 0) {
+        const targetPath = path.join(resolvedWdp, 'crawl-queue.md');
+        const rows = parsedQueue.map((q) => ({
+          URL: q.url,
+          Company: q.company,
+          Status: q.status,
+          Notes: q.notes,
+          'Queued At': q.queuedAt,
+        }));
+        const content = `# Crawl Queue\n\n` + formatMarkdownTable(['URL', 'Company', 'Status', 'Notes', 'Queued At'], rows);
+        fs.writeFileSync(targetPath, content, 'utf-8');
+      }
+
+      // Candidates
+      if (parsedCandidates.length > 0) {
+        const targetPath = path.join(resolvedWdp, 'job-candidates.md');
+        const rows = parsedCandidates.map((c) => ({
+          Company: c.company,
+          'Job Title': c.jobTitle,
+          URL: c.url,
+          Location: c.location,
+          Score: String(c.score),
+          Breakdown: c.breakdown,
+          Status: c.status,
+          'Discovered At': c.discoveredAt,
+          'Applied At': c.appliedAt,
+          Notes: c.notes,
+        }));
+        const content = `# Job Candidates\n\n` + formatMarkdownTable(['Company', 'Job Title', 'URL', 'Location', 'Score', 'Breakdown', 'Status', 'Discovered At', 'Applied At', 'Notes'], rows);
+        fs.writeFileSync(targetPath, content, 'utf-8');
+      }
+
+      // Run Logs
+      if (parsedLogs.length > 0) {
+        const targetPath = path.join(resolvedWdp, 'logs.md');
+        const rows = parsedLogs.map((l) => ({
+          Timestamp: l.timestamp,
+          Mode: l.mode,
+          'Companies Processed': l.companies,
+          'URLs Queued': String(l.urlsQueued),
+          'Candidates Scored': String(l.candidatesScored),
+          Summary: l.summary,
+          Details: l.details,
+        }));
+        const content = `# Pipeline Run Logs\n\n` + formatMarkdownTable(['Timestamp', 'Mode', 'Companies Processed', 'URLs Queued', 'Candidates Scored', 'Summary', 'Details'], rows);
+        fs.writeFileSync(targetPath, content, 'utf-8');
+      }
     }
 
     printSummaryTable(stats);
-    console.log(`\x1b[32m[SUCCESS] Successfully migrated data to local markdown files in ${resolvedWdp}\x1b[0m`);
+    console.log(`\x1b[32m[SUCCESS] Successfully completed local data migration.\x1b[0m`);
 
   } else if (mode === 'neon') {
     const connStr = connectionString || process.env.DATABASE_URL || getKeychainSecret(DEFAULT_KEYCHAIN_SERVICE, DEFAULT_KEYCHAIN_ACCOUNT);

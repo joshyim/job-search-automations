@@ -817,7 +817,7 @@ setTimeout(() => {
 "
 pass "MCP stdio server connected and responded with all expected tools"
 
-# Functional test: Zero-config first-run resilience (missing config file auto-initializes without crash)
+# Functional test: Zero-config first-run resilience without creating user-global fallback storage (PRO-27)
 ISOLATED_HOME="$PLUGIN_ROOT/tests/fixtures/isolated_home_$$"
 mkdir -p "$ISOLATED_HOME"
 
@@ -840,7 +840,7 @@ let initializedOk = false;
 
 child.stdout.on('data', (chunk) => {
   stdoutData += chunk.toString();
-  if (stdoutData.includes('\"get_candidates\"')) {
+  if (stdoutData.includes('\"get_candidates\"') && stdoutData.includes('\"select_workspace\"')) {
     initializedOk = true;
     child.kill('SIGTERM');
   }
@@ -875,10 +875,10 @@ child.stdin.write(toolsReq);
 
 child.on('exit', () => {
   const autoCfg = path.join('$ISOLATED_HOME', '.config', 'job-search-automation', 'config.json');
-  if (initializedOk && fs.existsSync(autoCfg)) {
+  if (initializedOk && !fs.existsSync(autoCfg)) {
     process.exit(0);
   } else {
-    console.error('Zero-config initialization failed. Output:', stdoutData);
+    console.error('Zero-config test failed. Initialized:', initializedOk, 'Global config unexpectedly created:', fs.existsSync(autoCfg), 'Output:', stdoutData);
     process.exit(1);
   }
 });
@@ -887,7 +887,7 @@ setTimeout(() => {
   child.kill('SIGKILL');
 }, 6000);
 "
-pass "MCP server gracefully auto-initializes default local config on fresh zero-config start"
+pass "MCP server starts cleanly without creating user-global fallback storage (PRO-27)"
 rm -rf "$ISOLATED_HOME"
 
 

@@ -12,16 +12,17 @@ Select a batch of companies via MCP, then for each company: crawl its job board 
 
 - `$ARGUMENTS` - Optional: company names (space-separated). Bypasses batch selection.
 
-## Resume Resolution
+## Workspace & Resume Resolution
 
-Before beginning, resolve and verify the candidate resume:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
-2. Verify `workflowDataPath/resume.pdf` exists.
-3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
+Before beginning, resolve the workspace directory and candidate resume:
+1. Determine the active workspace directory `<selected-directory>` (from user prompt/context, or active workspace).
+2. Initialize or select workspace: Call `select_workspace({ directory: "<selected-directory>" })` or pass `selected_directory: "<selected-directory>"` to MCP tool invocations.
+3. Verify `<selected-directory>/.job-search/resume.pdf` exists.
+4. If `<selected-directory>/.job-search/resume.pdf` does not exist, halt immediately with the error:
    ```
-   Error: Resume file not found at workflowDataPath/resume.pdf.
+   Error: Resume file not found at <selected-directory>/.job-search/resume.pdf.
    Please place your resume at this location or run:
-     ./setup.sh --update-resume /path/to/your/resume.pdf
+     ./setup.sh --directory "<selected-directory>" --update-resume /path/to/your/resume.pdf
    ```
 
 ## Steps
@@ -31,23 +32,23 @@ Before beginning, resolve and verify the candidate resume:
 If `$ARGUMENTS` is provided, use those companies only (each with its known job-board URL or look up via `list_companies`).
 
 Otherwise, query the data layer via MCP:
-- Call `get_batch({ limit: 3 })`.
+- Call `get_batch({ limit: 3, selected_directory: "<selected-directory>" })`.
 - This returns the least-recently-searched active target companies (excluding companies marked as excluded).
 - If no companies are returned or all active companies have already been searched today, log "cycle complete" and exit.
 
-Clean up any stale temporary files under `<workflowDataPath>/tmp/`.
+Clean up any stale temporary files under `<selected-directory>/.job-search/tmp/`.
 
 ### 2. Per-company loop
 
 For each company in the batch, execute both phases completely before moving to the next:
 
 **Phase A - Crawl:**
-Read and follow `skills/job-search-crawl/SKILL.md` for this company. Pass the company name and careers URL.
+Read and follow `skills/job-search-crawl/SKILL.md` for this company. Pass the company name, careers URL, and workspace directory.
 The crawl skill uses `scripts/crawl-job-board.js`, matches postings against title patterns via `list_title_patterns`, deduplicates via `check_url_exists`, and writes pending roles via `add_to_queue`.
 
 **Phase B - Assess:**
-Read and follow `skills/job-search-assess/SKILL.md` for this company. Pass the company name.
-The assess skill retrieves pending roles via `get_pending_queue`, dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<workflowDataPath>/resume.pdf`, records qualified roles via `add_candidate`, and updates status via `update_queue_status`.
+Read and follow `skills/job-search-assess/SKILL.md` for this company. Pass the company name and workspace directory.
+The assess skill retrieves pending roles via `get_pending_queue`, dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<selected-directory>/.job-search/resume.pdf`, records qualified roles via `add_candidate`, and updates status via `update_queue_status`.
 
 **Phase C - Log and clean up:**
 Record the run outcome for this company using MCP tool `log_run`:
@@ -67,7 +68,7 @@ Record the run outcome for this company using MCP tool `log_run`:
   }
 }
 ```
-Then remove this company's temporary directory under `<workflowDataPath>/tmp/<company-slug>/`.
+Then remove this company's temporary directory under `<selected-directory>/.job-search/tmp/<company-slug>/`.
 
 On failure at any point: call `log_run` with the failure details, clean up the company's temp directory, then continue to the next company.
 
@@ -110,5 +111,5 @@ Output the execution summary to the user:
 - Complete both crawl and assess for one company before starting the next.
 - Do not apply to any roles. Discovery and scoring only.
 - Record every company run outcome using `log_run`.
-- Do not perform direct markdown file I/O for pipeline state. All data operations MUST go through MCP tools (`get_batch`, `log_run`, `get_candidates`).
-- All temporary files (JSON extracts, helper scripts) MUST be written inside `<workflowDataPath>/tmp/<company-slug>/` and cleaned up in Phase C.
+- Do not perform direct file I/O for pipeline state. All data operations MUST go through MCP tools (`get_batch`, `log_run`, `get_candidates`).
+- All temporary files (JSON extracts, helper scripts) MUST be written inside `<selected-directory>/.job-search/tmp/<company-slug>/` and cleaned up in Phase C.

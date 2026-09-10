@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { DataAdapter } from '../src/adapters/types.js';
+import { WorkspaceManager } from '../src/workspace.js';
 import { registerAllTools } from '../src/tools/register.js';
 
 describe('MCP Tools Registration & Invocation', () => {
@@ -38,15 +39,38 @@ describe('MCP Tools Registration & Invocation', () => {
     };
   }
 
+  function createMockWorkspaceManager(adapter: DataAdapter): WorkspaceManager {
+    const wm = new WorkspaceManager();
+    vi.spyOn(wm, 'getAdapter').mockResolvedValue(adapter);
+    vi.spyOn(wm, 'selectWorkspace').mockResolvedValue({
+      status: 'active',
+      workspace_directory: '/mock/project',
+      database_path: '/mock/project/.job-search/job-search.sqlite',
+      resume_path: '/mock/project/.job-search/resume.pdf',
+    });
+    vi.spyOn(wm, 'getWorkspaceInfo').mockResolvedValue({
+      active_workspace: '/mock/project',
+      database_path: '/mock/project/.job-search/job-search.sqlite',
+      resume_path: '/mock/project/.job-search/resume.pdf',
+      resume_exists: true,
+      config_path: '/mock/project/.job-search/config.json',
+      config_exists: true,
+    });
+    return wm;
+  }
+
   it('registers all expected tools on the McpServer', () => {
     const server = new McpServer({ name: 'test-server', version: '0.1.0' });
     const adapter = createMockAdapter();
+    const wm = createMockWorkspaceManager(adapter);
 
-    registerAllTools(server, adapter);
+    registerAllTools(server, wm);
 
     const registeredToolNames = Object.keys((server as any)._registeredTools);
 
     const expectedTools = [
+      'select_workspace',
+      'get_workspace_info',
       'list_companies',
       'add_company',
       'update_company',
@@ -81,13 +105,30 @@ describe('MCP Tools Registration & Invocation', () => {
     }
   });
 
+  it('invokes select_workspace tool and returns workspace details', async () => {
+    const server = new McpServer({ name: 'test-server', version: '0.1.0' });
+    const adapter = createMockAdapter();
+    const wm = createMockWorkspaceManager(adapter);
+    registerAllTools(server, wm);
+
+    const selectTool = (server as any)._registeredTools['select_workspace'];
+    const result = await selectTool.handler({ directory: '/mock/project' });
+    expect(wm.selectWorkspace).toHaveBeenCalledWith('/mock/project');
+    expect(result.content[0].type).toBe('text');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.status).toBe('active');
+    expect(parsed.workspace_directory).toBe('/mock/project');
+  });
+
   it('invokes company tools and returns expected text content', async () => {
     const server = new McpServer({ name: 'test-server', version: '0.1.0' });
     const adapter = createMockAdapter();
-    registerAllTools(server, adapter);
+    const wm = createMockWorkspaceManager(adapter);
+    registerAllTools(server, wm);
 
     const listCompaniesTool = (server as any)._registeredTools['list_companies'];
-    const result = await listCompaniesTool.handler({ include_excluded: false });
+    const result = await listCompaniesTool.handler({ include_excluded: false, selected_directory: '/mock/project' });
+    expect(wm.getAdapter).toHaveBeenCalledWith('/mock/project');
     expect(result.content).toBeDefined();
     expect(result.content[0].type).toBe('text');
     expect(JSON.parse(result.content[0].text)).toEqual([
@@ -98,10 +139,12 @@ describe('MCP Tools Registration & Invocation', () => {
   it('invokes get_batch tool and delegates to adapter', async () => {
     const server = new McpServer({ name: 'test-server', version: '0.1.0' });
     const adapter = createMockAdapter();
-    registerAllTools(server, adapter);
+    const wm = createMockWorkspaceManager(adapter);
+    registerAllTools(server, wm);
 
     const getBatchTool = (server as any)._registeredTools['get_batch'];
-    const result = await getBatchTool.handler({ limit: 3 });
+    const result = await getBatchTool.handler({ limit: 3, directory: '/mock/project' });
+    expect(wm.getAdapter).toHaveBeenCalledWith('/mock/project');
     expect(adapter.getBatch).toHaveBeenCalledWith(3);
     expect(JSON.parse(result.content[0].text)).toHaveLength(1);
   });
@@ -109,7 +152,8 @@ describe('MCP Tools Registration & Invocation', () => {
   it('invokes candidate and log tools properly', async () => {
     const server = new McpServer({ name: 'test-server', version: '0.1.0' });
     const adapter = createMockAdapter();
-    registerAllTools(server, adapter);
+    const wm = createMockWorkspaceManager(adapter);
+    registerAllTools(server, wm);
 
     const addCandidateTool = (server as any)._registeredTools['add_candidate'];
     await addCandidateTool.handler({
@@ -134,7 +178,8 @@ describe('MCP Tools Registration & Invocation', () => {
   it('invokes update_company, update_title_pattern, skill tools, and list_queue properly', async () => {
     const server = new McpServer({ name: 'test-server', version: '0.1.0' });
     const adapter = createMockAdapter();
-    registerAllTools(server, adapter);
+    const wm = createMockWorkspaceManager(adapter);
+    registerAllTools(server, wm);
 
     // update_company
     const updateCompanyTool = (server as any)._registeredTools['update_company'];
@@ -191,5 +236,16 @@ describe('MCP Tools Registration & Invocation', () => {
     const listQueueTool = (server as any)._registeredTools['list_queue'];
     await listQueueTool.handler({ status: 'pending' });
     expect(adapter.listQueue).toHaveBeenCalledWith({ status: 'pending' });
+  });
+
+  it('returns actionable error response when workspace is uninitialized', async () => {
+    const server = new McpServer({ name: 'test-server', version: '0.1.0' });
+    const wm = new WorkspaceManager(); // uninitialized
+    registerAllTools(server, wm);
+
+    const listCompaniesTool = (server as any)._registeredTools['list_companies'];
+    const result = await listCompaniesTool.handler({});
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('No workspace directory provided');
   });
 });

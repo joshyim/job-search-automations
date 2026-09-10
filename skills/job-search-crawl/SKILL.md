@@ -18,8 +18,8 @@ This skill processes the single company passed via `$ARGUMENTS`. It expects the 
 
 ### 1. Crawl the job board
 
-Resolve `workflowDataPath` from `~/.config/job-search-automation/config.json` (default: `~/.local/share/job-search-automation`).
-Write ALL intermediate files to `<workflowDataPath>/tmp/<company-slug>/`. Create the directory if it does not exist. Never write temp files to the repository root or outside this directory.
+Resolve the active workspace directory `<selected-directory>` (from user prompt/context, orchestrator call, or active workspace).
+Write ALL intermediate files to `<selected-directory>/.job-search/tmp/<company-slug>/`. Create the directory if it does not exist. Never write temp files to the repository root or outside this directory.
 
 Primary method - the shared lightweight crawl script:
 

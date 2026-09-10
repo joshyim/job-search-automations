@@ -17,8 +17,8 @@ flowchart TB
     MAINTENANCE["Scope maintenance<br/>skills (company & title)"]
     ACTIVE["Active search skills<br/>(lead-gen, crawl, assess)"]
     MCP["MCP Data Layer<br/>(job-search-db)"]
-    STORAGE[("Storage Backend<br/>(Local Markdown or Neon DB)")]
-    RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+    STORAGE[("Storage Backend<br/>(Local SQLite or Neon DB)")]
+    RESUME["Resume<br/>.job-search/resume.pdf"]
 
     EXT -->|market postings & careers| MAINTENANCE
     RESUME -->|candidate background| MAINTENANCE
@@ -56,7 +56,7 @@ config:
 ---
 flowchart TB
     EXT["Job boards &<br/>industry sources"]
-    RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+    RESUME["Resume<br/>.job-search/resume.pdf"]
     TITLE_DISC["title-discovery"]
     COMP_SEARCH["company-search"]
     MCP["MCP Server<br/>(job-search-db)"]
@@ -93,7 +93,7 @@ config:
     wrappingWidth: 160
 ---
 flowchart TB
-    RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+    RESUME["Resume<br/>.job-search/resume.pdf"]
     ORCHESTRATOR["job-search-lead-gen"]
     CRAWL["job-search-crawl"]
     ASSESS["job-search-assess"]
@@ -164,7 +164,7 @@ config:
 ---
 flowchart TB
     EXT["Live posting &<br/>job description"]
-    RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+    RESUME["Resume<br/>.job-search/resume.pdf"]
     ASSESS["job-search-assess"]
     MCP["MCP Server<br/>(job-search-db)"]
 
@@ -238,7 +238,7 @@ config:
 flowchart TB
     subgraph EXTERNAL["External Sources & Assets"]
         EXT["External job boards & web search"]
-        RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+        RESUME["Resume<br/>.job-search/resume.pdf"]
     end
 
     subgraph SCOPE["Scope Maintenance Skills"]
@@ -251,7 +251,7 @@ flowchart TB
         CRAWL["job-search-crawl"]
         ASSESS["job-search-assess"]
         CRAWLER["scripts/crawl-job-board.js"]
-        TMP["tmp/company-slug/<br/>Ephemeral crawl files"]
+        TMP[".job-search/tmp/company-slug/<br/>Ephemeral crawl files"]
     end
 
     subgraph MCP_LAYER["MCP Data Access Layer (job-search-db)"]
@@ -259,7 +259,7 @@ flowchart TB
     end
 
     subgraph BACKEND["Storage Backend (Dual-Mode)"]
-        STORAGE[("Local Markdown Files OR Neon PostgreSQL")]
+        STORAGE[("Local SQLite (.job-search/job-search.sqlite) OR Neon PostgreSQL")]
     end
 
     RESUME --> TITLE_DISC

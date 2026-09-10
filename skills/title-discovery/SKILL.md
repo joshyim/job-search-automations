@@ -8,16 +8,17 @@ compatibility: Requires Node.js (v18+). Harness-agnostic.
 
 Discover job titles that match key candidate skills but are not yet covered by target title patterns, adding validated include/exclude patterns via MCP tools.
 
-## Resume Resolution
+## Workspace & Resume Resolution
 
 Before beginning:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
-2. Verify `workflowDataPath/resume.pdf` exists.
-3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
+1. Determine the active workspace directory `<selected-directory>` (from user prompt/context, or active workspace).
+2. Initialize or select workspace: Call `select_workspace({ directory: "<selected-directory>" })` or pass `selected_directory: "<selected-directory>"` to MCP tool invocations.
+3. Verify `<selected-directory>/.job-search/resume.pdf` exists.
+4. If `<selected-directory>/.job-search/resume.pdf` does not exist, halt immediately with the error:
    ```
-   Error: Resume file not found at workflowDataPath/resume.pdf.
+   Error: Resume file not found at <selected-directory>/.job-search/resume.pdf.
    Please place your resume at this location or run:
-     ./setup.sh --update-resume /path/to/your/resume.pdf
+     ./setup.sh --directory "<selected-directory>" --update-resume /path/to/your/resume.pdf
    ```
 
 ## Steps
@@ -28,7 +29,7 @@ Before beginning:
    - Call `list_title_patterns()` to retrieve include and exclude patterns.
 2. Fetch target candidate skills via MCP:
    - Call `list_skills()` to retrieve target skills, categories, and priority levels (P1/P2).
-3. Read `<workflowDataPath>/resume.pdf` to understand candidate seniority, experience, and background.
+3. Read `<selected-directory>/.job-search/resume.pdf` to understand candidate seniority, experience, and background.
 
 ### 2. Search for title variants
 

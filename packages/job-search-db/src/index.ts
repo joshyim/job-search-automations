@@ -1,38 +1,29 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { DataAdapter } from './adapters/types.js';
-import { LocalAdapter } from './adapters/local/local-adapter.js';
-import { NeonAdapter } from './adapters/neon/neon-adapter.js';
-import { loadConfig } from './config.js';
-import { getNeonConnectionString } from './keychain.js';
+import { WorkspaceManager } from './workspace.js';
 import { registerAllTools } from './tools/register.js';
 
 async function main(): Promise<void> {
-  // Process command-line arguments (e.g. --config /path/to/config.json)
-  let customConfigPath: string | undefined;
+  // Process command-line arguments (e.g. --directory /path/to/project or --config /path/to/config.json)
+  let initialWorkspace: string | undefined =
+    process.env.JOB_SEARCH_WORKSPACE ||
+    process.env.JOB_SEARCH_DIRECTORY ||
+    process.env.JOB_SEARCH_CONFIG_PATH;
+
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--config' && args[i + 1]) {
-      customConfigPath = args[i + 1];
+    if ((args[i] === '--config' || args[i] === '--directory' || args[i] === '-d') && args[i + 1]) {
+      initialWorkspace = args[i + 1];
       i++;
+    } else if (args[i].startsWith('--config=')) {
+      initialWorkspace = args[i].slice('--config='.length);
+    } else if (args[i].startsWith('--directory=')) {
+      initialWorkspace = args[i].slice('--directory='.length);
     }
   }
 
-  // Load and validate configuration
-  const config = loadConfig(customConfigPath);
-
-  let adapter: DataAdapter;
-  if (config.mode === 'local') {
-    adapter = new LocalAdapter(config.workflowDataPath!);
-  } else if (config.mode === 'neon') {
-    const connectionString = getNeonConnectionString(config.keychainService, config.keychainAccount);
-    adapter = new NeonAdapter(connectionString);
-  } else {
-    throw new Error(`Unsupported mode: ${(config as any).mode}`);
-  }
-
-  // Initialize storage backend
-  await adapter.initialize();
+  // Initialize WorkspaceManager
+  const workspaceManager = new WorkspaceManager(initialWorkspace);
 
   // Create MCP Server
   const server = new McpServer({
@@ -41,14 +32,14 @@ async function main(): Promise<void> {
   });
 
   // Register all tools
-  registerAllTools(server, adapter);
+  registerAllTools(server, workspaceManager);
 
   // Setup graceful shutdown
   const shutdown = async () => {
     try {
-      await adapter.close();
+      await workspaceManager.closeAll();
     } catch (err) {
-      console.error('Error during adapter close:', err);
+      console.error('Error during workspace close:', err);
     }
     process.exit(0);
   };
@@ -59,7 +50,7 @@ async function main(): Promise<void> {
   // Connect to stdio transport
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error(`[job-search-db] MCP server started in "${config.mode}" mode.`);
+  console.error('[job-search-db] MCP server started.');
 }
 
 main().catch((err) => {

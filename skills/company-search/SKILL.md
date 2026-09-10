@@ -8,16 +8,17 @@ compatibility: Requires Node.js (v18+). Harness-agnostic.
 
 Discover companies that are actively hiring for target roles and add qualified matches to the target companies list via MCP tools. This skill expands pipeline coverage beyond manually curated entries.
 
-## Resume Resolution
+## Workspace & Resume Resolution
 
 Before beginning:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
-2. Verify `workflowDataPath/resume.pdf` exists.
-3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
+1. Determine the active workspace directory `<selected-directory>` (from user prompt/context, or active workspace).
+2. Initialize or select workspace: Call `select_workspace({ directory: "<selected-directory>" })` or pass `selected_directory: "<selected-directory>"` to MCP tool invocations.
+3. Verify `<selected-directory>/.job-search/resume.pdf` exists.
+4. If `<selected-directory>/.job-search/resume.pdf` does not exist, halt immediately with the error:
    ```
-   Error: Resume file not found at workflowDataPath/resume.pdf.
+   Error: Resume file not found at <selected-directory>/.job-search/resume.pdf.
    Please place your resume at this location or run:
-     ./setup.sh --update-resume /path/to/your/resume.pdf
+     ./setup.sh --directory "<selected-directory>" --update-resume /path/to/your/resume.pdf
    ```
 
 ## Sources to Search
@@ -40,7 +41,7 @@ Search these platforms for companies hiring candidate target roles:
 2. Fetch existing target and excluded companies via MCP:
    - Call `list_companies({ include_excluded: true })`.
    - Build a lookup set of existing company names and excluded company names/domains.
-3. Read `<workflowDataPath>/resume.pdf` to understand candidate domain fit (e.g. AI/ML, developer tools, enterprise SaaS).
+3. Read `<selected-directory>/.job-search/resume.pdf` to understand candidate domain fit (e.g. AI/ML, developer tools, enterprise SaaS).
 
 ### 2. Search each source
 

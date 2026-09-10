@@ -35,7 +35,7 @@ job-search-automation/
 ├── scripts/                    # Shared operational utilities
 │   ├── crawl-job-board.js      # Lightweight ATS API & HTTP job board scraper
 │   ├── init-neon.js            # Neon schema & default rubric seeder
-│   └── migrate.js              # Markdown-to-Neon migration engine
+│   └── migrate.js              # Markdown-to-SQLite/Neon migration engine
 ├── templates/                  # Scaffolding templates & default rubric
 ├── web/                        # Local dashboard SPA & dev server
 └── tests/                      # Packaging, skills, rubric, & setup test suites
@@ -46,7 +46,7 @@ job-search-automation/
 ## Prerequisites
 
 - **Node.js**: Version 18 or higher.
-- **Optional**: Neon PostgreSQL connection string (only if choosing Neon cloud mode; Local Markdown mode requires zero cloud services).
+- **Optional**: Neon PostgreSQL connection string (only if choosing Neon cloud mode; Local SQLite mode requires zero cloud services).
 
 ---
 
@@ -61,7 +61,7 @@ The simplest way to use this plugin is inside the **Claude Desktop App (Cowork m
    > *"Find companies hiring Staff Product Managers in San Francisco or Remote"*
 
 > [!NOTE]
-> **Zero-Configuration & Private**: Setup automatically installs required Node dependencies and compiles the local database server (`packages/job-search-db`). All pipeline data and your resume remain 100% private on your local computer (`~/.local/share/job-search-automation/`). No browser downloads or cloud databases required.
+> **Zero-Configuration & Private**: Setup automatically installs required Node dependencies and compiles the local database server (`packages/job-search-db`). All pipeline data and your resume remain 100% private in your project workspace (`<selected-directory>/.job-search/`). No browser downloads or cloud databases required.
 
 ---
 
@@ -83,12 +83,12 @@ Then tell Claude:
 
 You can also run the setup orchestrator directly via terminal:
 
-### Option A: Local Mode (Zero-Dependency Markdown Storage) [Recommended]
+### Option A: Local SQLite Mode (Self-Contained Project Workspace) [Recommended]
 ```bash
-./setup.sh --mode local --resume /path/to/your/resume.pdf -y
+./setup.sh --directory /path/to/your/workspace --resume /path/to/your/resume.pdf -y
 ```
-- Stores data in `~/.local/share/job-search-automation/` as structured Markdown tables.
-- Writes configuration to `~/.config/job-search-automation/config.json`.
+- Stores data and configuration self-contained inside `<selected-directory>/.job-search/` (`job-search.sqlite`, `resume.pdf`, `config.json`).
+- Automatically creates `.gitignore` inside `.job-search/` to prevent committing the database and resume.
 - Automatically compiles the local database MCP server.
 
 ### Option B: Neon Mode (Cloud PostgreSQL)
@@ -107,7 +107,7 @@ Run `./setup.sh` without arguments to step through guided interactive configurat
 
 Update your active resume at any time:
 ```bash
-./setup.sh --update-resume /path/to/new-resume.pdf
+./setup.sh --directory /path/to/your/workspace --update-resume /path/to/new-resume.pdf
 ```
 
 
@@ -128,7 +128,7 @@ Each skill is located in `skills/<skill-name>/SKILL.md` and exposes clean declar
 
 ## Model Context Protocol (MCP) Server
 
-The bundled `job-search-db` MCP server provides uniform data access across both Local Markdown and Neon modes. The plugin supports both portable Agent Plugins hosts and Claude Code.
+The bundled `job-search-db` MCP server provides uniform data access across both Local SQLite and Neon modes. The plugin supports both portable Agent Plugins hosts and Claude Code.
 
 ### Portable Agent Plugins (`mcp.json`)
 

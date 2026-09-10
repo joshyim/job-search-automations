@@ -189,10 +189,10 @@ echo "--- 6. Verifying Conventional Resume Path & Error Handling ---"
 RESUME_SKILLS=("job-search-lead-gen" "job-search-assess" "company-search" "title-discovery")
 for skill in "${RESUME_SKILLS[@]}"; do
   skill_file="$SKILLS_DIR/$skill/SKILL.md"
-  if grep -q "workflowDataPath/resume.pdf" "$skill_file"; then
-    pass "$skill: References conventional workflowDataPath/resume.pdf"
+  if grep -q "\.job-search/resume\.pdf" "$skill_file"; then
+    pass "$skill: References conventional .job-search/resume.pdf"
   else
-    fail "$skill: Missing conventional workflowDataPath/resume.pdf reference"
+    fail "$skill: Missing conventional .job-search/resume.pdf reference"
   fi
 
   if grep -qi "resume file not found" "$skill_file"; then

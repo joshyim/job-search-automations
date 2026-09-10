@@ -416,7 +416,7 @@
       subtitle: 'Company search loop: Discovers companies from job boards & web search, checks targets via MCP, and persists new target additions or exclusions.',
       diagram: `flowchart TB
     EXT["Job boards &<br/>industry sources"]
-    RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+    RESUME["Resume<br/>.job-search/resume.pdf"]
     COMP_SEARCH["company-search<br/>(Discovery Skill)"]
     MCP["MCP Server<br/>(job-search-db)"]
 
@@ -440,7 +440,7 @@
       subtitle: 'Title search loop: Discovers title variations, extracts target levels, and adds include/exclude match patterns via MCP.',
       diagram: `flowchart TB
     EXT["Job boards &<br/>industry sources"]
-    RESUME["Resume<br/>workflowDataPath/resume.pdf"]
+    RESUME["Resume<br/>.job-search/resume.pdf"]
     TITLE_DISC["title-discovery<br/>(Title Discovery Skill)"]
     MCP["MCP Server<br/>(job-search-db)"]
 
@@ -467,7 +467,7 @@
     CRAWL["Phase A:<br/>job-search-crawl"]
     ASSESS["Phase B:<br/>job-search-assess"]
     MCP["MCP Server<br/>(job-search-db)"]
-    RESUME["Candidate Resume<br/>workflowDataPath/resume.pdf"]
+    RESUME["Candidate Resume<br/>.job-search/resume.pdf"]
 
     MCP -->|get_batch: limit 3 least-recent| ORCH
     ORCH -->|1. Dispatch crawl per company| CRAWL

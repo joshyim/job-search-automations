@@ -14,16 +14,17 @@ This skill processes pending queue entries for the company passed via `$ARGUMENT
 
 - `$ARGUMENTS` - Required: the company name to assess (e.g., `Stripe`).
 
-## Resume Resolution
+## Workspace & Resume Resolution
 
 Before processing:
-1. Determine `workflowDataPath`: Read `~/.config/job-search-automation/config.json` for `workflowDataPath` (default: `~/.local/share/job-search-automation`).
-2. Verify `workflowDataPath/resume.pdf` exists.
-3. If `workflowDataPath/resume.pdf` does not exist, halt immediately with the error:
+1. Determine the active workspace directory `<selected-directory>` (from user prompt/context, or active workspace).
+2. Initialize or select workspace: Call `select_workspace({ directory: "<selected-directory>" })` or pass `selected_directory: "<selected-directory>"` to MCP tool invocations.
+3. Verify `<selected-directory>/.job-search/resume.pdf` exists.
+4. If `<selected-directory>/.job-search/resume.pdf` does not exist, halt immediately with the error:
    ```
-   Error: Resume file not found at workflowDataPath/resume.pdf.
+   Error: Resume file not found at <selected-directory>/.job-search/resume.pdf.
    Please place your resume at this location or run:
-     ./setup.sh --update-resume /path/to/your/resume.pdf
+     ./setup.sh --directory "<selected-directory>" --update-resume /path/to/your/resume.pdf
    ```
 
 ## Steps
@@ -53,7 +54,7 @@ For any pending URL that has already been recorded, call `update_queue_status({ 
      ...
      ```
 2. Call MCP tool `list_skills()` to retrieve target candidate skills (P1 and P2 priority skills, categories, notes).
-3. Read `<workflowDataPath>/resume.pdf` to ground experience and skills.
+3. Read `<selected-directory>/.job-search/resume.pdf` to ground experience and skills.
 
 ### 3. Process each posting individually
 
@@ -75,7 +76,7 @@ For each pending posting, in queue order:
 
 **Score (Prompt Assembly):**
 Assemble the assessment prompt dynamically:
-1. Inject `<workflowDataPath>/resume.pdf` contents and target skills from `list_skills`.
+1. Inject `<selected-directory>/.job-search/resume.pdf` contents and target skills from `list_skills`.
 2. Inject the runtime-formatted rubric table (with normalized integer weights and tier criteria).
 3. Inject the fetched job posting text.
 

@@ -29,6 +29,7 @@ const MIME_TYPES: Record<string, string> = {
 interface ServerOptions {
   port: number;
   configPath?: string;
+  directory?: string;
 }
 
 const DEFAULT_PORT = 3847;
@@ -37,6 +38,7 @@ function parseArgs(): ServerOptions {
   const args = process.argv.slice(2);
   let rawPort: string | undefined = process.env.PORT;
   let configPath: string | undefined = process.env.JOB_SEARCH_CONFIG_PATH;
+  let directory: string | undefined = process.env.JOB_SEARCH_WORKSPACE;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -50,6 +52,11 @@ function parseArgs(): ServerOptions {
       i++;
     } else if (arg.startsWith('--config=')) {
       configPath = arg.slice('--config='.length);
+    } else if (arg === '--directory' && args[i + 1]) {
+      directory = args[i + 1];
+      i++;
+    } else if (arg.startsWith('--directory=')) {
+      directory = arg.slice('--directory='.length);
     }
   }
 
@@ -63,7 +70,7 @@ function parseArgs(): ServerOptions {
     }
   }
 
-  return { port, configPath };
+  return { port, configPath, directory };
 }
 
 class JobSearchUIServer {
@@ -85,37 +92,14 @@ class JobSearchUIServer {
       );
     }
 
-    // Ensure a configuration file exists so local mode starts effortlessly out-of-the-box
-    const defaultCfgDir = path.join(os.homedir(), '.config', 'job-search-automation');
-    const defaultCfgFile = path.join(defaultCfgDir, 'config.json');
-    const defaultWdp = path.join(os.homedir(), '.local', 'share', 'job-search-automation');
-    const legacyCfgFile = path.join(os.homedir(), '.config', 'job-search-plugin', 'config.json');
-    const activeCfg = this.options.configPath || process.env.JOB_SEARCH_CONFIG_PATH || (fs.existsSync(legacyCfgFile) && !fs.existsSync(defaultCfgFile) ? legacyCfgFile : defaultCfgFile);
-
-    if (!fs.existsSync(activeCfg)) {
-      console.log(`[UI Server] No config file found at ${activeCfg}. Creating default local configuration...`);
-      fs.mkdirSync(path.dirname(activeCfg), { recursive: true });
-      fs.mkdirSync(defaultWdp, { recursive: true });
-      fs.writeFileSync(
-        activeCfg,
-        JSON.stringify(
-          {
-            $schema: 'https://json-schema.org/draft-07/schema#',
-            version: '1.0.0',
-            mode: 'local',
-            workflowDataPath: defaultWdp,
-            updatedAt: new Date().toISOString(),
-          },
-          null,
-          2
-        ),
-        'utf-8'
-      );
-    }
-
     const args = [DB_SERVER_PATH];
-    if (this.options.configPath) {
-      args.push('--config', this.options.configPath);
+    const targetDir = this.options.directory || process.env.JOB_SEARCH_WORKSPACE || (fs.existsSync(path.join(process.cwd(), '.job-search', 'config.json')) ? process.cwd() : undefined);
+    const activeCfg = this.options.configPath || process.env.JOB_SEARCH_CONFIG_PATH;
+
+    if (targetDir) {
+      args.push('--directory', path.resolve(targetDir));
+    } else if (activeCfg) {
+      args.push('--config', path.resolve(activeCfg));
     }
 
     console.log(`[UI Server] Connecting to MCP Server: node ${args.join(' ')}`);
@@ -125,7 +109,8 @@ class JobSearchUIServer {
       args,
       env: {
         ...process.env,
-        ...(this.options.configPath ? { JOB_SEARCH_CONFIG_PATH: this.options.configPath } : {}),
+        ...(targetDir ? { JOB_SEARCH_WORKSPACE: path.resolve(targetDir) } : {}),
+        ...(activeCfg ? { JOB_SEARCH_CONFIG_PATH: path.resolve(activeCfg) } : {}),
       },
     });
 

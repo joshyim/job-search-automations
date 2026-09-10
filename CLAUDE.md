@@ -1,6 +1,6 @@
 # Claude Cowork & Claude Code Agent Guidelines: Job Search Automation
 
-This repository provides an automated, skill-based job search pipeline with dual-mode data access (Local Markdown and Neon Cloud PostgreSQL) and an MCP server.
+This repository provides an automated, skill-based job search pipeline with local SQLite storage (and optional Neon Cloud PostgreSQL) and an MCP server.
 
 ## Installation & First-Time Setup (Claude Cowork / Desktop App)
 
@@ -8,20 +8,20 @@ When a user in Claude Desktop (Cowork mode) or Claude Code asks to install, set 
 
 1. **Keep it simple and frictionless**:
    - Do **NOT** debate marketplace mechanisms vs. local scripts.
-   - Do **NOT** warn about ephemeral cloud sandboxes. Cowork connects directly to the user's workspace, and data persists permanently in `~/.local/share/job-search-automation/`.
-   - Do **NOT** ask about Neon database strings or storage modes unless the user explicitly requests Neon cloud mode. Local Markdown mode is the default zero-dependency mode.
+   - Do **NOT** warn about ephemeral cloud sandboxes. Cowork connects directly to the user's workspace, and data persists permanently in `<selected-directory>/.job-search/` (containing `job-search.sqlite`, `resume.pdf`, and `config.json`).
+   - Do **NOT** ask about Neon database strings or storage modes unless the user explicitly requests Neon cloud mode. Local SQLite mode is the default zero-dependency mode.
    - Do **NOT** attempt to install Playwright or Chromium. The crawler runs zero-browser lightweight fetch with ATS APIs.
 
-2. **Resume Path Collection**:
+2. **Resume Path & Workspace Collection**:
    - If the user hasn't provided a resume path, ask:
      > *"To set up your job search pipeline, please provide the path to your resume PDF (for example: `~/Documents/resume.pdf` or drag-and-drop it here)."*
 
 3. **Execute Setup**:
-   - Run the automated setup non-interactively:
+   - Run the automated setup non-interactively specifying the target directory:
      ```bash
-     ./setup.sh --mode local --resume "<path-to-resume.pdf>" -y
+     ./setup.sh --directory "<path-to-workspace>" --resume "<path-to-resume.pdf>" -y
      ```
-   - Setup will automatically compile the local database MCP server (`packages/job-search-db`) and scaffold the Markdown storage tables.
+   - Setup will automatically compile the database MCP server (`packages/job-search-db`) and scaffold the `<selected-directory>/.job-search/` workspace with SQLite database, configuration, and default scoring rubric.
 
 4. **Conversational Next Step**:
    - Once setup reports completion, ask the user:
@@ -41,5 +41,5 @@ When a user in Claude Desktop (Cowork mode) or Claude Code asks to install, set 
 
 If the user provides a new resume later:
 ```bash
-./setup.sh --update-resume "<path-to-new-resume.pdf>"
+./setup.sh --directory "<path-to-workspace>" --update-resume "<path-to-new-resume.pdf>"
 ```

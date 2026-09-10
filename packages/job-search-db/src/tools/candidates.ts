@@ -1,12 +1,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { CandidateStatus, DataAdapter } from '../adapters/types.js';
+import { CandidateStatus } from '../adapters/types.js';
+import { WorkspaceManager } from '../workspace.js';
 
-export function registerCandidateTools(server: McpServer, adapter: DataAdapter): void {
+export function registerCandidateTools(server: McpServer, workspaceManager: WorkspaceManager): void {
   server.tool(
     'add_candidate',
     'Add or update a scored candidate job opportunity',
     {
+      selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+      directory: z.string().optional().describe('Alias for selected_directory'),
       company_name: z.string().describe('Company name'),
       job_title: z.string().describe('Job title'),
       url: z.string().describe('Job posting URL'),
@@ -16,20 +19,28 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
       status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new")'),
       notes: z.string().optional().describe('Notes, key strengths, or interview highlights'),
     },
-    async ({ company_name, job_title, url, location, score, breakdown, status, notes }) => {
-      const candidate = await adapter.addCandidate({
-        company_name,
-        job_title,
-        url,
-        location,
-        score,
-        breakdown,
-        status: status as CandidateStatus | undefined,
-        notes,
-      });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(candidate, null, 2) }],
-      };
+    async ({ selected_directory, directory, company_name, job_title, url, location, score, breakdown, status, notes }) => {
+      try {
+        const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+        const candidate = await adapter.addCandidate({
+          company_name,
+          job_title,
+          url,
+          location,
+          score,
+          breakdown,
+          status: status as CandidateStatus | undefined,
+          notes,
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(candidate, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: err.message }],
+        };
+      }
     }
   );
 
@@ -37,15 +48,25 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
     'update_candidate_status',
     'Update the status of a candidate job posting (new, applied, in_progress, not_pursuing)',
     {
+      selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+      directory: z.string().optional().describe('Alias for selected_directory'),
       url: z.string().describe('The URL of the candidate to update'),
       status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).describe('New application status'),
       notes: z.string().optional().describe('Optional notes about the status update'),
     },
-    async ({ url, status, notes }) => {
-      const candidate = await adapter.updateCandidateStatus(url, status as CandidateStatus, notes);
-      return {
-        content: [{ type: 'text', text: JSON.stringify(candidate, null, 2) }],
-      };
+    async ({ selected_directory, directory, url, status, notes }) => {
+      try {
+        const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+        const candidate = await adapter.updateCandidateStatus(url, status as CandidateStatus, notes);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(candidate, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: err.message }],
+        };
+      }
     }
   );
 
@@ -53,6 +74,8 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
     'get_candidates',
     'Retrieve job candidates, filterable by status, company, or score, and sortable',
     {
+      selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+      directory: z.string().optional().describe('Alias for selected_directory'),
       status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Filter by status'),
       min_score: z.number().optional().describe('Filter by minimum score'),
       company_name: z.string().optional().describe('Filter by company name'),
@@ -60,18 +83,26 @@ export function registerCandidateTools(server: McpServer, adapter: DataAdapter):
       sort_by: z.enum(['score', 'discovered_at']).optional().describe('Sort field ("score" or "discovered_at", default "score")'),
       sort_order: z.enum(['asc', 'desc']).optional().describe('Sort direction ("asc" or "desc", default "desc")'),
     },
-    async ({ status, min_score, company_name, limit, sort_by, sort_order }) => {
-      const candidates = await adapter.getCandidates({
-        status: status as CandidateStatus | undefined,
-        min_score,
-        company_name,
-        limit,
-        sort_by,
-        sort_order,
-      });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(candidates, null, 2) }],
-      };
+    async ({ selected_directory, directory, status, min_score, company_name, limit, sort_by, sort_order }) => {
+      try {
+        const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+        const candidates = await adapter.getCandidates({
+          status: status as CandidateStatus | undefined,
+          min_score,
+          company_name,
+          limit,
+          sort_by,
+          sort_order,
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(candidates, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: err.message }],
+        };
+      }
     }
   );
 }
