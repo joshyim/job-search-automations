@@ -6,8 +6,7 @@
       "command": "node",
       "args": [
         "${PLUGIN_ROOT}/packages/job-search-db/scripts/start.js"
-      ],
-      "cwd": "${PLUGIN_ROOT}/packages/job-search-db"
+      ]
     }
   }
 }

@@ -173,7 +173,12 @@ assert_file_exists "$MCP_JSON" "mcp.json exists at plugin root"
 
 node -e "
 const fs = require('fs');
-const mcp = JSON.parse(fs.readFileSync('$MCP_JSON', 'utf-8'));
+const rawMcp = fs.readFileSync('$MCP_JSON', 'utf-8');
+if (rawMcp.includes('\${CLAUDE_PLUGIN_ROOT}')) {
+  console.error('mcp.json must not contain Claude-specific \${CLAUDE_PLUGIN_ROOT} placeholder');
+  process.exit(1);
+}
+const mcp = JSON.parse(rawMcp);
 
 if (mcp['\$schema'] !== 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json') {
   console.error('Invalid mcp \$schema URL: ' + mcp['\$schema']);
@@ -196,10 +201,15 @@ if (!Array.isArray(srv.args) || !srv.args.some(a => a.includes('\${PLUGIN_ROOT}'
   console.error('args does not use \${PLUGIN_ROOT} placeholder: ' + JSON.stringify(srv.args));
   process.exit(1);
 }
+if (srv.cwd !== undefined) {
+  console.error('mcp.json should omit cwd, but found: ' + srv.cwd);
+  process.exit(1);
+}
 "
 pass "mcp.json matches Agent Plugins MCP schema URL"
 pass "mcp.json registers 'job-search-db' with stdio transport"
 pass "mcp.json uses \${PLUGIN_ROOT} placeholder in args for portable launch"
+pass "mcp.json omits redundant cwd property"
 
 # ------------------------------------------------------------------------------
 # Story 4: Skills Compatibility Frontmatter & Cron /schedule Documentation
@@ -283,15 +293,36 @@ if (pl.name !== 'job-search-automation' || !pl.version) {
   console.error('Invalid .claude-plugin/plugin.json');
   process.exit(1);
 }
-const mcp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/.mcp.json', 'utf-8'));
+const rawClaudeMcp = fs.readFileSync('$PLUGIN_ROOT/.mcp.json', 'utf-8');
+if (rawClaudeMcp.includes('\${PLUGIN_ROOT}')) {
+  console.error('.mcp.json must NOT contain \${PLUGIN_ROOT} placeholder: ' + rawClaudeMcp);
+  process.exit(1);
+}
+const mcp = JSON.parse(rawClaudeMcp);
 if (!mcp.mcpServers || !mcp.mcpServers['job-search-db']) {
   console.error('Invalid .mcp.json structure');
+  process.exit(1);
+}
+const srv = mcp.mcpServers['job-search-db'];
+if (srv.command !== 'node') {
+  console.error('Expected command node, got: ' + srv.command);
+  process.exit(1);
+}
+if (!Array.isArray(srv.args) || !srv.args.some(a => a.includes('\${CLAUDE_PLUGIN_ROOT}'))) {
+  console.error('args does not use \${CLAUDE_PLUGIN_ROOT} placeholder: ' + JSON.stringify(srv.args));
+  process.exit(1);
+}
+if (srv.cwd !== undefined) {
+  console.error('.mcp.json must omit cwd property, but found: ' + srv.cwd);
   process.exit(1);
 }
 "
 pass ".claude-plugin/marketplace.json defines valid marketplace"
 pass ".claude-plugin/plugin.json defines valid plugin manifest"
 pass ".mcp.json correctly defines job-search-db server"
+pass ".mcp.json uses \${CLAUDE_PLUGIN_ROOT} placeholder in args for Claude Code"
+pass ".mcp.json does not contain unsupported \${PLUGIN_ROOT} placeholder"
+pass ".mcp.json omits redundant cwd property"
 
 
 # ------------------------------------------------------------------------------
@@ -522,7 +553,7 @@ else
   fail "packages/job-search-db/scripts/start.js is not executable"
 fi
 
-# Verify mcp.json and .mcp.json use scripts/start.js
+# Verify mcp.json and .mcp.json use scripts/start.js with appropriate host placeholders
 node -e "
 const fs = require('fs');
 const mcp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/mcp.json', 'utf-8'));
@@ -539,8 +570,16 @@ if (!claudeMcpArg.endsWith('scripts/start.js')) {
   console.error('.mcp.json arg does not end with scripts/start.js: ' + claudeMcpArg);
   process.exit(1);
 }
+if (!mcpArg.startsWith('\${PLUGIN_ROOT}/')) {
+  console.error('mcp.json arg does not start with \${PLUGIN_ROOT}/: ' + mcpArg);
+  process.exit(1);
+}
+if (!claudeMcpArg.startsWith('\${CLAUDE_PLUGIN_ROOT}/')) {
+  console.error('.mcp.json arg does not start with \${CLAUDE_PLUGIN_ROOT}/: ' + claudeMcpArg);
+  process.exit(1);
+}
 "
-pass "mcp.json and .mcp.json route job-search-db through scripts/start.js"
+pass "mcp.json and .mcp.json route job-search-db through scripts/start.js with host placeholders"
 
 # Verify packages/job-search-db/package.json start script
 node -e "
@@ -850,6 +889,210 @@ setTimeout(() => {
 "
 pass "MCP server gracefully auto-initializes default local config on fresh zero-config start"
 rm -rf "$ISOLATED_HOME"
+
+
+# ------------------------------------------------------------------------------
+# Story 10: Host MCP Server Launcher Integration (PRO-26)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 10] Host MCP Server Launcher Integration (PRO-26)${RESET}"
+
+# Negative test: assert that .mcp.json fails if ${PLUGIN_ROOT} is present
+if grep -Fq '${PLUGIN_ROOT}' "$PLUGIN_ROOT/.mcp.json"; then
+  fail "Claude Code integration: .mcp.json contains unsupported \${PLUGIN_ROOT}"
+else
+  pass "Claude Code integration: .mcp.json strictly rejects \${PLUGIN_ROOT}"
+fi
+
+# Agent Plugins host integration: validate and launch root mcp.json by expanding ${PLUGIN_ROOT}
+AGENT_PLUGINS_STDOUT="$PLUGIN_ROOT/tests/fixtures/agent_plugins_stdout_$$.log"
+AGENT_PLUGINS_STDERR="$PLUGIN_ROOT/tests/fixtures/agent_plugins_stderr_$$.log"
+
+node -e "
+const fs = require('fs');
+const { spawn } = require('child_process');
+
+const mcp = JSON.parse(fs.readFileSync('$PLUGIN_ROOT/mcp.json', 'utf-8'));
+const srv = mcp.mcpServers['job-search-db'];
+
+if (srv.cwd !== undefined) {
+  console.error('Agent Plugins integration error: mcp.json contains cwd');
+  process.exit(1);
+}
+
+// Conforming Agent Plugins host replaces \${PLUGIN_ROOT} with the actual plugin root
+const resolvedArgs = srv.args.map(arg => arg.replace(/\\\${PLUGIN_ROOT}/g, '$PLUGIN_ROOT'));
+
+const child = spawn(srv.command, resolvedArgs, {
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+
+const stdoutStream = fs.createWriteStream('$AGENT_PLUGINS_STDOUT');
+const stderrStream = fs.createWriteStream('$AGENT_PLUGINS_STDERR');
+
+child.stdout.pipe(stdoutStream);
+child.stderr.pipe(stderrStream);
+
+let foundTools = false;
+let stdoutBuffer = '';
+
+child.stdout.on('data', (chunk) => {
+  stdoutBuffer += chunk.toString();
+  const lines = stdoutBuffer.split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const msg = JSON.parse(line.trim());
+      if (msg.id === 2 && msg.result && Array.isArray(msg.result.tools)) {
+        foundTools = true;
+        child.kill('SIGTERM');
+      }
+    } catch {}
+  }
+});
+
+const initReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'agent-plugins-test-host', version: '1.0.0' }
+  }
+}) + '\n';
+
+const notifyReq = JSON.stringify({
+  jsonrpc: '2.0',
+  method: 'notifications/initialized'
+}) + '\n';
+
+const toolsReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 2,
+  method: 'tools/list',
+  params: {}
+}) + '\n';
+
+child.stdin.write(initReq);
+child.stdin.write(notifyReq);
+child.stdin.write(toolsReq);
+
+child.on('exit', () => {
+  if (foundTools) {
+    process.exit(0);
+  } else {
+    console.error('Agent Plugins integration failed to list tools. Output:', stdoutBuffer);
+    process.exit(1);
+  }
+});
+
+setTimeout(() => {
+  child.kill('SIGKILL');
+  console.error('Agent Plugins integration timed out');
+  process.exit(1);
+}, 6000);
+"
+pass "Agent Plugins integration validates and launches root mcp.json"
+rm -f "$AGENT_PLUGINS_STDOUT" "$AGENT_PLUGINS_STDERR"
+
+
+# Claude Code host integration: validate and launch root .mcp.json by expanding ${CLAUDE_PLUGIN_ROOT}
+CLAUDE_CODE_STDOUT="$PLUGIN_ROOT/tests/fixtures/claude_code_stdout_$$.log"
+CLAUDE_CODE_STDERR="$PLUGIN_ROOT/tests/fixtures/claude_code_stderr_$$.log"
+
+node -e "
+const fs = require('fs');
+const { spawn } = require('child_process');
+
+const rawClaudeMcp = fs.readFileSync('$PLUGIN_ROOT/.mcp.json', 'utf-8');
+if (rawClaudeMcp.includes('\${PLUGIN_ROOT}')) {
+  console.error('Claude Code integration failure: .mcp.json contains \${PLUGIN_ROOT}');
+  process.exit(1);
+}
+
+const claudeMcp = JSON.parse(rawClaudeMcp);
+const srv = claudeMcp.mcpServers['job-search-db'];
+
+if (srv.cwd !== undefined) {
+  console.error('Claude Code integration error: .mcp.json contains cwd');
+  process.exit(1);
+}
+
+// Claude Code host replaces \${CLAUDE_PLUGIN_ROOT} with the actual plugin root
+const resolvedArgs = srv.args.map(arg => arg.replace(/\\\${CLAUDE_PLUGIN_ROOT}/g, '$PLUGIN_ROOT'));
+
+const child = spawn(srv.command, resolvedArgs, {
+  stdio: ['pipe', 'pipe', 'pipe']
+});
+
+const stdoutStream = fs.createWriteStream('$CLAUDE_CODE_STDOUT');
+const stderrStream = fs.createWriteStream('$CLAUDE_CODE_STDERR');
+
+child.stdout.pipe(stdoutStream);
+child.stderr.pipe(stderrStream);
+
+let foundTools = false;
+let stdoutBuffer = '';
+
+child.stdout.on('data', (chunk) => {
+  stdoutBuffer += chunk.toString();
+  const lines = stdoutBuffer.split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const msg = JSON.parse(line.trim());
+      if (msg.id === 2 && msg.result && Array.isArray(msg.result.tools)) {
+        foundTools = true;
+        child.kill('SIGTERM');
+      }
+    } catch {}
+  }
+});
+
+const initReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {},
+    clientInfo: { name: 'claude-code-test-host', version: '1.0.0' }
+  }
+}) + '\n';
+
+const notifyReq = JSON.stringify({
+  jsonrpc: '2.0',
+  method: 'notifications/initialized'
+}) + '\n';
+
+const toolsReq = JSON.stringify({
+  jsonrpc: '2.0',
+  id: 2,
+  method: 'tools/list',
+  params: {}
+}) + '\n';
+
+child.stdin.write(initReq);
+child.stdin.write(notifyReq);
+child.stdin.write(toolsReq);
+
+child.on('exit', () => {
+  if (foundTools) {
+    process.exit(0);
+  } else {
+    console.error('Claude Code integration failed to list tools. Output:', stdoutBuffer);
+    process.exit(1);
+  }
+});
+
+setTimeout(() => {
+  child.kill('SIGKILL');
+  console.error('Claude Code integration timed out');
+  process.exit(1);
+}, 6000);
+"
+pass "Claude Code integration validates and launches root .mcp.json"
+rm -f "$CLAUDE_CODE_STDOUT" "$CLAUDE_CODE_STDERR"
 
 
 # ------------------------------------------------------------------------------

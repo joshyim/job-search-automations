@@ -128,7 +128,11 @@ Each skill is located in `skills/<skill-name>/SKILL.md` and exposes clean declar
 
 ## Model Context Protocol (MCP) Server
 
-The bundled `job-search-db` MCP server provides uniform data access across both Local Markdown and Neon modes. Configured via `mcp.json`:
+The bundled `job-search-db` MCP server provides uniform data access across both Local Markdown and Neon modes. The plugin supports both portable Agent Plugins hosts and Claude Code.
+
+### Portable Agent Plugins (`mcp.json`)
+
+Used by Codex and conforming Agent Plugins v1 hosts:
 
 ```json
 {
@@ -138,9 +142,25 @@ The bundled `job-search-db` MCP server provides uniform data access across both 
       "type": "stdio",
       "command": "node",
       "args": [
-        "${PLUGIN_ROOT}/packages/job-search-db/dist/index.js"
-      ],
-      "cwd": "${PLUGIN_ROOT}/packages/job-search-db"
+        "${PLUGIN_ROOT}/packages/job-search-db/scripts/start.js"
+      ]
+    }
+  }
+}
+```
+
+### Claude Code (`.mcp.json`)
+
+Used natively by Claude Code and Claude Cowork:
+
+```json
+{
+  "mcpServers": {
+    "job-search-db": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/packages/job-search-db/scripts/start.js"
+      ]
     }
   }
 }
