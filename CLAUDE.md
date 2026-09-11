@@ -1,14 +1,14 @@
-# Claude Cowork & Claude Code Agent Guidelines: Job Search Automation
+# Claude Code Agent Guidelines: Job Search Automation
 
 This repository provides an automated, skill-based job search pipeline with local SQLite storage (and optional Neon Cloud PostgreSQL) and an MCP server.
 
-## Installation & First-Time Setup (Claude Cowork / Desktop App)
+## Installation & First-Time Setup (Claude Desktop / CLI)
 
-When a user in Claude Desktop (Cowork mode) or Claude Code asks to install, set up, or get started with Job Search Automation:
+When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to install, set up, or get started with Job Search Automation:
 
 1. **Keep it simple and frictionless**:
    - Do **NOT** debate marketplace mechanisms vs. local scripts.
-   - Do **NOT** warn about ephemeral cloud sandboxes. Cowork connects directly to the user's workspace, and data persists permanently in `<selected-directory>/.job-search/` (containing `job-search.sqlite`, `resume.pdf`, and `config.json`).
+   - Do **NOT** warn about ephemeral cloud sandboxes. Claude Code connects directly to the user's workspace, and data persists permanently in `<selected-directory>/.job-search/` (containing `job-search.sqlite`, `resume.pdf`, and `config.json`).
    - Do **NOT** ask about Neon database strings or storage modes unless the user explicitly requests Neon cloud mode. Local SQLite mode is the default zero-dependency mode.
    - Do **NOT** attempt to install Playwright or Chromium. The crawler runs zero-browser lightweight fetch with ATS APIs.
 

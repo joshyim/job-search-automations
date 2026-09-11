@@ -2,7 +2,7 @@
 
 Find real opportunities before the crowd does. Stop wasting hours scrolling expired jobs on job boards.
 
-This automated job search skills plugin runs inside Claude Code or ChatGPT co-work. You direct how the search runs: tell your agent which companies to track, which to avoid, and what matters to you. It goes beyond simple keyword searches to discover companies and roles matched to your actual skills, career history, and preferences.
+This automated job search skills plugin runs inside Claude Code (Desktop & CLI) or ChatGPT. You direct how the search runs: tell your agent which companies to track, which to avoid, and what matters to you. It goes beyond simple keyword searches to discover companies and roles matched to your actual skills, career history, and preferences.
 
 Put your AI to work with flexible, user-directed loops:
 
@@ -50,11 +50,11 @@ job-search-automation/
 
 ---
 
-## Quickstart: Claude Desktop (Cowork Mode)
+## Quickstart: Claude Desktop (Claude Code Mode)
 
-The simplest way to use this plugin is inside the **Claude Desktop App (Cowork mode)**:
+The simplest way to use this plugin is inside the **Claude Desktop App (Claude Code mode)**:
 
-1. Open your project folder in **Claude Desktop Cowork**.
+1. Open your project folder in **Claude Desktop** and select **Claude Code** mode.
 2. Tell Claude:
    > *"Set up job search automation with my resume at /path/to/resume.pdf"*
 3. Tell Claude what roles or companies to target:
@@ -173,7 +173,7 @@ Used by Codex and conforming Agent Plugins v1 hosts:
 
 ### Claude Code (`.mcp.json`)
 
-Used natively by Claude Code and Claude Cowork:
+Used natively by Claude Code (Desktop & CLI):
 
 ```json
 {
