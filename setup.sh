@@ -37,6 +37,7 @@ UPDATE_RESUME_PATH=""
 NEON_CONN_STR=""
 MIGRATE_FROM=""
 CONFIG_FILE=""
+INSTALL_TO=""
 NON_INTERACTIVE=false
 FORCE=false
 MOCK_MODE=false
@@ -61,6 +62,7 @@ print_help() {
   echo "  --resume <path>              Path to initial resume file to import"
   echo "  --mode <local|neon>          Storage mode ('local' or 'neon', default: local)"
   echo "  --neon-connection-string <s> Neon PostgreSQL connection string (Neon mode)"
+  echo "  --install-to <path>          Target directory to install self-contained plugin package"
   echo "  --migrate-from <path>        Directory containing existing markdown files to migrate"
   echo "  --config-path <path>         Custom path to config.json (for testing/isolation)"
   echo "  --workflow-data-path <path>  Target directory for workflow data (legacy compatibility)"
@@ -252,6 +254,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --neon-connection-string)
       NEON_CONN_STR="$2"
+      shift 2
+      ;;
+    --install-to)
+      INSTALL_TO="$2"
       shift 2
       ;;
     --migrate-from)
@@ -647,11 +653,105 @@ if [ -n "$MIGRATE_FROM" ]; then
   fi
 fi
 
+# 6. Install self-contained plugin package if --directory or --install-to was specified
+TARGET_PLUGIN_DIR=""
+if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
+  TARGET_PLUGIN_DIR="${INSTALL_TO:-$PROJECT_DIR/.claude/plugins/job-search-automation}"
+  TARGET_PLUGIN_DIR="$(expand_path "$TARGET_PLUGIN_DIR")"
+  echo -e "${CYAN}[*] Installing self-contained plugin package to: $TARGET_PLUGIN_DIR...${RESET}"
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const pluginDir = '$TARGET_PLUGIN_DIR';
+    const repoRoot = '$SCRIPT_DIR';
+    fs.mkdirSync(pluginDir, { recursive: true });
+
+    const filter = (src, name) => {
+      if (name === '.git' || name === 'tests' || name === 'tmp' || name === '.cocoindex_code') return false;
+      if (name === 'sync-public.sh') return false;
+      if (name.endsWith('.test.ts') || name.endsWith('.test.js') || name.endsWith('.test.sh')) return false;
+      return true;
+    };
+
+    function copyRec(src, dest, filterFn) {
+      const stat = fs.statSync(src);
+      if (stat.isDirectory()) {
+        if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+        for (const entry of fs.readdirSync(src)) {
+          const s = path.join(src, entry);
+          const d = path.join(dest, entry);
+          if (filterFn && !filterFn(s, entry)) continue;
+          copyRec(s, d, filterFn);
+        }
+      } else {
+        const p = path.dirname(dest);
+        if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+        fs.copyFileSync(src, dest);
+        if (stat.mode & 0o111) fs.chmodSync(dest, stat.mode);
+      }
+    }
+
+    for (const f of ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql']) {
+      const s = path.join(repoRoot, f);
+      if (fs.existsSync(s)) fs.copyFileSync(s, path.join(pluginDir, f));
+    }
+    for (const d of ['skills', 'scripts']) {
+      const s = path.join(repoRoot, d);
+      if (fs.existsSync(s)) copyRec(s, path.join(pluginDir, d), filter);
+    }
+    for (const p of ['job-search-db', 'job-search-ui']) {
+      const s = path.join(repoRoot, 'packages', p);
+      if (fs.existsSync(s)) {
+        copyRec(s, path.join(pluginDir, 'packages', p), (src, name) => {
+          if (name === 'src' || name === 'tests') return false;
+          return filter(src, name);
+        });
+        const startScript = path.join(pluginDir, 'packages', p, 'scripts', 'start.js');
+        if (fs.existsSync(startScript)) fs.chmodSync(startScript, 0o755);
+      }
+    }
+  "
+  echo -e "${GREEN}[+] Plugin package installed:${RESET} $TARGET_PLUGIN_DIR"
+
+  # Configure project .mcp.json
+  MCP_FILE="$PROJECT_DIR/.mcp.json"
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const projectDir = '$PROJECT_DIR';
+    const pluginDir = '$TARGET_PLUGIN_DIR';
+    const mcpFile = '$MCP_FILE';
+    let cfg = { mcpServers: {} };
+    if (fs.existsSync(mcpFile)) {
+      try { cfg = JSON.parse(fs.readFileSync(mcpFile, 'utf-8')); if (!cfg.mcpServers) cfg.mcpServers = {}; } catch {}
+    }
+    const startJs = path.join(pluginDir, 'packages', 'job-search-db', 'scripts', 'start.js');
+    let rel = path.relative(projectDir, startJs);
+    if (!rel.startsWith('./') && !rel.startsWith('../') && !rel.startsWith('/')) rel = './' + rel;
+    cfg.mcpServers['job-search-db'] = {
+      type: 'stdio',
+      command: 'node',
+      args: [rel]
+    };
+    fs.writeFileSync(mcpFile, JSON.stringify(cfg, null, 2) + '\n');
+  "
+  echo -e "${GREEN}[+] MCP configuration updated:${RESET} $MCP_FILE"
+
+  if [ -f "$PROJECT_DIR/.gitignore" ]; then
+    if ! grep -q "\.claude/plugins/" "$PROJECT_DIR/.gitignore"; then
+      echo -e "\n# Installed Agent Plugins\n.claude/plugins/" >> "$PROJECT_DIR/.gitignore"
+    fi
+  fi
+fi
+
 echo ""
 echo -e "${GREEN}${BOLD}==============================================================${RESET}"
 echo -e "${GREEN}${BOLD}  Setup Complete! Job Search Automation is ready to use.      ${RESET}"
 echo -e "${GREEN}${BOLD}==============================================================${RESET}"
 echo -e "  Mode:              ${BOLD}$MODE${RESET}"
+if [ -n "$TARGET_PLUGIN_DIR" ]; then
+  echo -e "  Plugin Dir:        ${BOLD}$TARGET_PLUGIN_DIR${RESET}"
+fi
 echo -e "  Workspace Dir:     ${BOLD}$JOB_SEARCH_DIR${RESET}"
 echo -e "  Database:          ${BOLD}$TARGET_SQLITE${RESET}"
 echo -e "  Resume:            ${BOLD}$TARGET_RESUME${RESET}"

@@ -24,6 +24,9 @@ Write ALL intermediate files to `<selected-directory>/.job-search/tmp/<company-s
 Primary method - the shared lightweight crawl script:
 
 ```bash
+# In installed project workspace:
+node .claude/plugins/job-search-automation/scripts/crawl-job-board.js "<job-board-url>" --json
+# In plugin repository:
 node scripts/crawl-job-board.js "<job-board-url>" --json
 ```
 
