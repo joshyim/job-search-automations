@@ -70,7 +70,7 @@ The simplest way to use this plugin is inside the **Claude Desktop App (Cowork m
 If you use the **Claude Code CLI**, install it directly via the plugin marketplace:
 
 ```text
-/plugin marketplace add joshyim/job-search-automations
+/plugin marketplace add personal-automation/job-search-automations
 /plugin install job-search-automation@job-search-automations
 ```
 
@@ -79,26 +79,33 @@ Then tell Claude:
 
 ---
 
-## Manual / Scripted Installation
+## Installation Methods
 
-You can also run the setup orchestrator directly via terminal:
+### Method 1: Zero-Clone CLI (`npx`) [Recommended]
 
-### Option A: Local SQLite Mode (Self-Contained Project Workspace) [Recommended]
+Install without cloning the git repository into your project:
+
+```bash
+npx @personal-automation/job-search-automation setup --directory /path/to/your/workspace --resume /path/to/your/resume.pdf
+```
+- Copies runtime-necessary files into `<selected-directory>/.claude/plugins/job-search-automation/`.
+- Configures `<selected-directory>/.mcp.json` with relative paths.
+- Conforms strictly to the Agent Plugins specification with **zero symlinks**.
+- Stores data and configuration self-contained inside `<selected-directory>/.job-search/` (`job-search.sqlite`, `resume.pdf`, `config.json`).
+
+### Method 2: Shell Script (`./setup.sh`)
+
+#### Local SQLite Mode (Self-Contained Project Workspace)
 ```bash
 ./setup.sh --directory /path/to/your/workspace --resume /path/to/your/resume.pdf -y
 ```
-- Stores data and configuration self-contained inside `<selected-directory>/.job-search/` (`job-search.sqlite`, `resume.pdf`, `config.json`).
-- Automatically creates `.gitignore` inside `.job-search/` to prevent committing the database and resume.
-- Automatically compiles the local database MCP server.
 
-### Option B: Neon Mode (Cloud PostgreSQL)
+#### Neon Mode (Cloud PostgreSQL)
 ```bash
 ./setup.sh --mode neon --resume /path/to/your/resume.pdf --neon-connection-string "postgres://..." -y
 ```
-- Stores credentials securely in macOS Keychain under service `job-search-automation`.
-- Automatically provisions tables and seeds the runtime scoring rubric.
 
-### Interactive Mode
+#### Interactive Mode
 Run `./setup.sh` without arguments to step through guided interactive configuration in your terminal.
 
 ---
@@ -106,8 +113,23 @@ Run `./setup.sh` without arguments to step through guided interactive configurat
 ## Updating Your Resume
 
 Update your active resume at any time:
+
 ```bash
+# Using CLI:
+npx @personal-automation/job-search-automation update-resume /path/to/new-resume.pdf --directory /path/to/your/workspace
+
+# Using setup script:
 ./setup.sh --directory /path/to/your/workspace --update-resume /path/to/new-resume.pdf
+```
+
+---
+
+## Uninstalling the Plugin
+
+To remove the plugin code while preserving your search history and `.job-search/` database:
+
+```bash
+npx @personal-automation/job-search-automation uninstall --directory /path/to/your/workspace
 ```
 
 

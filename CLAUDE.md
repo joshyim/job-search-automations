@@ -17,11 +17,15 @@ When a user in Claude Desktop (Cowork mode) or Claude Code asks to install, set 
      > *"To set up your job search pipeline, please provide the path to your resume PDF (for example: `~/Documents/resume.pdf` or drag-and-drop it here)."*
 
 3. **Execute Setup**:
-   - Run the automated setup non-interactively specifying the target directory:
+   - Run the automated setup specifying the target directory (via npx or local script):
+     ```bash
+     npx @personal-automation/job-search-automation setup --directory "<path-to-workspace>" --resume "<path-to-resume.pdf>"
+     ```
+     Or using the local shell script:
      ```bash
      ./setup.sh --directory "<path-to-workspace>" --resume "<path-to-resume.pdf>" -y
      ```
-   - Setup will automatically compile the database MCP server (`packages/job-search-db`) and scaffold the `<selected-directory>/.job-search/` workspace with SQLite database, configuration, and default scoring rubric.
+   - Setup will automatically compile the database MCP server (`packages/job-search-db`), install the self-contained plugin package into `<selected-directory>/.claude/plugins/job-search-automation/`, configure `<selected-directory>/.mcp.json`, and scaffold the `<selected-directory>/.job-search/` workspace with SQLite database, configuration, and default scoring rubric.
 
 4. **Conversational Next Step**:
    - Once setup reports completion, ask the user:
@@ -31,7 +35,7 @@ When a user in Claude Desktop (Cowork mode) or Claude Code asks to install, set 
 ## Available Skills
 
 - **`company-search`**: Discovers hiring companies across YC, BuiltIn, Wellfound, and LinkedIn.
-- **`job-search-crawl`**: Crawls a company career board using the lightweight crawler (`node scripts/crawl-job-board.js "<url>" --json`). Falls back to WebSearch / WebFetch if needed.
+- **`job-search-crawl`**: Crawls a company career board using the lightweight crawler (`node .claude/plugins/job-search-automation/scripts/crawl-job-board.js "<url>" --json`). Falls back to WebSearch / WebFetch if needed.
 - **`job-search-assess`**: Scores crawl queue postings against the user's resume and rubric.
 - **`job-search-lead-gen`**: End-to-end orchestrator: selects target companies, crawls their boards, and scores matches.
 - **`title-discovery`**: Discovers target job titles and skills based on resume analysis.
@@ -40,6 +44,10 @@ When a user in Claude Desktop (Cowork mode) or Claude Code asks to install, set 
 ## Resume Updates
 
 If the user provides a new resume later:
+```bash
+npx @personal-automation/job-search-automation update-resume "<path-to-new-resume.pdf>" --directory "<path-to-workspace>"
+```
+Or using the local shell script:
 ```bash
 ./setup.sh --directory "<path-to-workspace>" --update-resume "<path-to-new-resume.pdf>"
 ```

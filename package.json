@@ -8,7 +8,34 @@
     "ui": "npm run start --prefix packages/job-search-ui",
     "ui:dev": "npm run dev --prefix packages/job-search-ui",
     "build": "npm run build --prefix packages/job-search-db && npm run build --prefix packages/job-search-ui",
+    "prepare": "npm run build",
     "test": "npm test --prefix packages/job-search-db",
     "sync:public": "bash scripts/sync-public.sh"
-  }
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "bin": {
+    "job-search-automation": "./bin/cli.js",
+    "job-search": "./bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "skills",
+    "packages/job-search-db/dist",
+    "packages/job-search-db/scripts",
+    "packages/job-search-db/package.json",
+    "packages/job-search-ui/dist",
+    "packages/job-search-ui/scripts",
+    "packages/job-search-ui/public",
+    "packages/job-search-ui/package.json",
+    "scripts/crawl-job-board.js",
+    "templates",
+    "plugin.json",
+    "mcp.json",
+    ".mcp.json",
+    ".claude-plugin",
+    "schema.sql",
+    "setup.sh"
+  ]
 }
