@@ -17,7 +17,7 @@ flowchart TB
     MAINTENANCE["Scope maintenance<br/>skills (company & title)"]
     ACTIVE["Active search skills<br/>(lead-gen, crawl, assess)"]
     MCP["MCP Data Layer<br/>(job-search-db)"]
-    STORAGE[("Storage Backend<br/>(Local SQLite or Neon DB)")]
+    STORAGE[("Storage Backend<br/>(SQLite: .job-search/job-search.sqlite<br/>or Neon PostgreSQL)")]
     RESUME["Resume<br/>.job-search/resume.pdf"]
 
     EXT -->|market postings & careers| MAINTENANCE
@@ -258,8 +258,8 @@ flowchart TB
         MCP["MCP Server Tools<br/>get_batch, list_companies, add_company,<br/>list_title_patterns, add_title_pattern, list_skills,<br/>get_scoring_rubric, check_url_exists, add_to_queue,<br/>get_pending_queue, update_queue_status,<br/>add_candidate, get_candidates, log_run"]
     end
 
-    subgraph BACKEND["Storage Backend (Dual-Mode)"]
-        STORAGE[("Local SQLite (.job-search/job-search.sqlite) OR Neon PostgreSQL")]
+    subgraph BACKEND["Storage Backend (Local SQLite or Neon DB)"]
+        STORAGE[("Database Tables (.job-search/job-search.sqlite):<br/>• companies<br/>• title_patterns & skills<br/>• scoring_rubric<br/>• crawl_queue<br/>• candidates<br/>• run_logs")]
     end
 
     RESUME --> TITLE_DISC

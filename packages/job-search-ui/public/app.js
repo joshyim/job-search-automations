@@ -351,9 +351,9 @@
 
     subgraph BOX_FOUNDATION["1. CANDIDATE CRITERIA & SEARCH SCOPE"]
         direction TB
-        RESUME["Resume/<br/>Candidate resume PDF"]
-        TITLES["target-job-titles-and-skills.md<br/>Include & exclude patterns, P1 & P2 skills"]
-        COMPANIES["target-companies.md<br/>Target companies & careers job-board URLs"]
+        RESUME["Candidate Resume<br/>.job-search/resume.pdf"]
+        TITLES["title_patterns & skills tables<br/>Include/exclude patterns, P1 & P2 skills"]
+        COMPANIES["companies table<br/>Target companies & careers URLs"]
     end
 
     subgraph BOX_MAINTENANCE["2 & 3. SCOPE MAINTENANCE SUB-PROCESS"]
@@ -368,20 +368,20 @@
         CRAWL["job-search-crawl<br/>Collect, match & deduplicate job postings"]
         CRAWLER["scripts/crawl-job-board.js<br/>Lightweight ATS / HTTP crawler"]
         ASSESS["job-search-assess<br/>Validate posting & score against rubric"]
-        RUBRIC["references/scoring-rubric.md<br/>Weighted evaluation dimensions"]
+        RUBRIC["scoring_rubric table<br/>Weighted evaluation dimensions via MCP"]
         ORCHESTRATOR -->|Phase A: crawl| CRAWL
         CRAWL --> CRAWLER
         ORCHESTRATOR -->|Phase B: assess| ASSESS
         RUBRIC --> ASSESS
     end
 
-    subgraph BOX_STATE["7. PIPELINE STATE & OUTPUTS (STATE LIFECYCLE)"]
+    subgraph BOX_STATE["7. PIPELINE STATE & RELATIONAL TABLES"]
         direction TB
         MCP["MCP Server: job-search-db<br/>Unified data access layer"]
-        STORAGE[("Storage Backend<br/>Local Markdown or Neon DB")]
-        QUEUE["crawl-queue.md<br/>pending -> assessed / skipped"]
-        CANDIDATES["job-candidates.md<br/>Scored roles & application status"]
-        LOGS["logs.md<br/>Run checkpoints & batch logs"]
+        STORAGE[("Storage Backend<br/>Local SQLite (.job-search/job-search.sqlite)<br/>or Neon PostgreSQL")]
+        QUEUE["crawl_queue table<br/>pending &rarr; assessed / skipped"]
+        CANDIDATES["candidates table<br/>Scored roles & application status"]
+        LOGS["run_logs table<br/>Run checkpoints & batch logs"]
         MCP <-->|unified interface| STORAGE
         MCP --> QUEUE
         MCP --> CANDIDATES
@@ -495,7 +495,7 @@
     EXT["Job board &<br/>web search"]
     SCRIPT["scripts/crawl-job-board.js<br/>(Lightweight crawler)"]
     CRAWL["job-search-crawl<br/>(Per-company crawler)"]
-    TMP["Ephemeral Storage<br/>tmp/company-slug/*.json"]
+    TMP["Ephemeral Storage<br/>.job-search/tmp/company-slug/*.json"]
     MCP["MCP Server<br/>(job-search-db)"]
 
     CRAWL -->|executes crawl script| SCRIPT
@@ -664,7 +664,7 @@
       { pattern: /Active Search|job-search-lead-gen/i, loop: 'active-search', label: 'Active Search Orchestrator Loop' },
       { pattern: /Crawl Detail|crawl-job-board|job-search-crawl/i, loop: 'crawl-detail', label: 'Crawl Detail Execution' },
       { pattern: /Assess Detail|job-search-assess|scoring-rubric/i, loop: 'assess-detail', label: 'Assessment & Scoring Detail' },
-      { pattern: /Pipeline State|crawl-queue|job-candidates|logs\.md|State Lifecycle/i, loop: 'lifecycle', label: 'State & Checkpoint Lifecycle' },
+      { pattern: /Pipeline State|crawl_queue|candidates|run_logs|State Lifecycle/i, loop: 'lifecycle', label: 'State & Checkpoint Lifecycle' },
     ];
 
     container.querySelectorAll('.cluster, .node').forEach((el) => {
