@@ -68,9 +68,9 @@ Record the run outcome for this company using MCP tool `log_run`:
   }
 }
 ```
-Then remove this company's temporary directory under `<selected-directory>/.job-search/tmp/<company-slug>/`.
+Then remove any temporary files for this company under `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` (and ensure `<selected-directory>/.job-search/tmp/` is clean).
 
-On failure at any point: call `log_run` with the failure details, clean up the company's temp directory, then continue to the next company.
+On failure at any point: call `log_run` with the failure details, clean up the company's temp files in `<selected-directory>/.job-search/tmp/`, then continue to the next company.
 
 ### 3. Sort pipeline tracker
 
@@ -112,4 +112,4 @@ Output the execution summary to the user:
 - Do not apply to any roles. Discovery and scoring only.
 - Record every company run outcome using `log_run`.
 - Do not perform direct file I/O for pipeline state. All data operations MUST go through MCP tools (`get_batch`, `log_run`, `get_candidates`).
-- All temporary files (JSON extracts, helper scripts) MUST be written inside `<selected-directory>/.job-search/tmp/<company-slug>/` and cleaned up in Phase C.
+- All temporary files (JSON extracts, helper scripts) MUST be written inside `<selected-directory>/.job-search/tmp/` (as flat files e.g. `<company-slug>-crawl.json`) and cleaned up in Phase C. Never create nested subdirectories.

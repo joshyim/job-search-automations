@@ -495,7 +495,7 @@
     EXT["Job board &<br/>web search"]
     SCRIPT["scripts/crawl-job-board.js<br/>(Lightweight crawler)"]
     CRAWL["job-search-crawl<br/>(Per-company crawler)"]
-    TMP["Ephemeral Storage<br/>.job-search/tmp/company-slug/*.json"]
+    TMP["Ephemeral Storage<br/>.job-search/tmp/*.json"]
     MCP["MCP Server<br/>(job-search-db)"]
 
     CRAWL -->|executes crawl script| SCRIPT

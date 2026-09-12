@@ -92,6 +92,12 @@ In a user's project workspace after installation, the source repo and git histor
    The plugin installation ships pre-compiled production bundles (`dist/` and `public/`). The TypeScript source directory `src/` is intentionally excluded from the plugin distribution. Running `npm run dev` or `tsx src/server.ts` will fail. Always use `npm run start` (or execute `scripts/start.js`).
 6. **Never run `npm install` in the project root or package directories**:
    Dependencies are already bundled or resolved within `.claude/plugins/job-search-automation/packages/`. Running `npm install` at the project root or against deleted repo paths will fail.
+7. **Intermediate Crawl Data & Ephemeral Files (`.job-search/tmp/`)**:
+   - The crawler `scripts/crawl-job-board.js` outputs JSON directly to stdout (`node ... --json`). Agents should parse stdout JSON directly in memory without writing intermediate files to disk whenever possible.
+   - If intermediate crawl data must be staged, write strictly to `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`.
+   - **NEVER** create directories or write files in the project workspace or repo root (e.g. `./tmp/` or `./<company>/`). Never create nested subdirectories inside `.job-search/tmp/`. The flat `.job-search/tmp/` directory is pre-created during setup.
+   - Pre-granted permissions in `.claude/settings.json` explicitly cover `mkdir` and `rm` for `.job-search/tmp*` and read/write for `.job-search/**` to guarantee unattended runs without prompts.
+   - Both `job-search-crawl` and `job-search-assess` must clean up any temporary files in `.job-search/tmp/` upon run completion. Scored candidates and queue entries are committed to the SQLite database via MCP tools—never left as files on disk.
 
 ## Launching the Web UI Dashboard
 

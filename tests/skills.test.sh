@@ -219,6 +219,61 @@ else
 fi
 
 echo ""
+echo "--- 8. Verifying Flat Intermediate Storage and Cleanup (PRO-32) ---"
+
+# crawl: references .job-search/tmp/, avoids nested company-slug subdirectories, documents cleanup
+if grep -q "\.job-search/tmp" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: References .job-search/tmp"
+else
+  fail "job-search-crawl: Missing .job-search/tmp reference"
+fi
+
+if ! grep -q "\.job-search/tmp/<company-slug>/" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Uses flat .job-search/tmp without nested subdirectories"
+else
+  fail "job-search-crawl: Contains nested .job-search/tmp/<company-slug>/ reference"
+fi
+
+if grep -qi "clean up" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Defines intermediate file cleanup"
+else
+  fail "job-search-crawl: Missing intermediate file cleanup directive"
+fi
+
+# assess: references .job-search/tmp/, avoids nested company-slug subdirectories, documents cleanup
+if grep -q "\.job-search/tmp" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: References .job-search/tmp"
+else
+  fail "job-search-assess: Missing .job-search/tmp reference"
+fi
+
+if ! grep -q "\.job-search/tmp/<company-slug>/" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Uses flat .job-search/tmp without nested subdirectories"
+else
+  fail "job-search-assess: Contains nested .job-search/tmp/<company-slug>/ reference"
+fi
+
+if grep -qi "clean up" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Defines intermediate file cleanup"
+else
+  fail "job-search-assess: Missing intermediate file cleanup directive"
+fi
+
+# lead-gen: avoids nested company-slug subdirectories in tmp
+if ! grep -q "\.job-search/tmp/<company-slug>/" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Uses flat .job-search/tmp without nested subdirectories"
+else
+  fail "job-search-lead-gen: Contains nested .job-search/tmp/<company-slug>/ reference"
+fi
+
+# CLAUDE.md: documents intermediate crawl data rules
+if grep -q "\.job-search/tmp" "$PLUGIN_ROOT/CLAUDE.md" && grep -qi "Intermediate Crawl Data" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents intermediate crawl data rules and .job-search/tmp/ usage"
+else
+  fail "CLAUDE.md: Missing intermediate crawl data guidance"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="

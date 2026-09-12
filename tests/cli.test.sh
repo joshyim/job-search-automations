@@ -193,6 +193,15 @@ assert_file_exists "$PROJECT_DIR/.job-search/job-search.sqlite" "job-search.sqli
 assert_file_exists "$PROJECT_DIR/.job-search/resume.pdf" "resume.pdf installed"
 assert_file_exists "$PROJECT_DIR/.job-search/config.json" "config.json created"
 assert_file_exists "$PROJECT_DIR/.job-search/.gitignore" ".job-search/.gitignore created"
+assert_dir_exists "$PROJECT_DIR/.job-search/tmp" ".job-search/tmp/ directory created (PRO-32)"
+
+# Verify expanded permissions in .claude/settings.json
+CLI_SETTINGS="$(cat "$PROJECT_DIR/.claude/settings.json")"
+assert_contains "$CLI_SETTINGS" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json contains mkdir .job-search/tmp* permission (PRO-32)"
+assert_contains "$CLI_SETTINGS" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json contains rm -rf ./.job-search/tmp* permission (PRO-32)"
+assert_contains "$CLI_SETTINGS" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json contains rm -rf .job-search/tmp* permission (PRO-32)"
+assert_contains "$CLI_SETTINGS" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json contains rm -f ./.job-search/tmp/* permission (PRO-32)"
+assert_contains "$CLI_SETTINGS" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json contains rm -f .job-search/tmp/* permission (PRO-32)"
 
 CONFIG_PERM="$(stat -f "%Lp" "$PROJECT_DIR/.job-search/config.json" 2>/dev/null || stat -c "%a" "$PROJECT_DIR/.job-search/config.json" 2>/dev/null)"
 assert_equals "600" "$CONFIG_PERM" "config.json permissions are 0600"

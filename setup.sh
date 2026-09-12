@@ -428,6 +428,7 @@ echo -e "${CYAN}[*] Initializing Job Search Plugin (${BOLD}${MODE} mode${RESET}$
 
 # 1. Prepare Workspace .job-search Directory
 mkdir -p "$JOB_SEARCH_DIR"
+mkdir -p "$JOB_SEARCH_DIR/tmp"
 echo -e "${GREEN}[+] Workspace directory ready:${RESET} $JOB_SEARCH_DIR"
 
 # 2. Copy Resume to conventional path
@@ -761,6 +762,11 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
     const grants = [
       'Bash(node ' + crawlRel + ':*)',
       'Bash(mkdir -p ./.job-search/tmp*)',
+      'Bash(mkdir -p .job-search/tmp*)',
+      'Bash(rm -rf ./.job-search/tmp*)',
+      'Bash(rm -rf .job-search/tmp*)',
+      'Bash(rm -f ./.job-search/tmp/*)',
+      'Bash(rm -f .job-search/tmp/*)',
       'Read(./.job-search/**)',
       'Write(./.job-search/**)'
     ];

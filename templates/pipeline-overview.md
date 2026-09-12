@@ -251,7 +251,7 @@ flowchart TB
         CRAWL["job-search-crawl"]
         ASSESS["job-search-assess"]
         CRAWLER["scripts/crawl-job-board.js"]
-        TMP[".job-search/tmp/company-slug/<br/>Ephemeral crawl files"]
+        TMP[".job-search/tmp/<br/>Ephemeral crawl files"]
     end
 
     subgraph MCP_LAYER["MCP Data Access Layer (job-search-db)"]

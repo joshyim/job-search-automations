@@ -43,6 +43,18 @@ assert_file_exists() {
   fi
 }
 
+assert_dir_exists() {
+  local dir="$1"
+  local test_name="$2"
+  if [ -d "$dir" ]; then
+    echo -e "  ${GREEN}✓${RESET} $test_name"
+    TEST_PASSED=$((TEST_PASSED + 1))
+  else
+    echo -e "  ${RED}✗${RESET} $test_name (Directory not found: $dir)"
+    TEST_FAILED=$((TEST_FAILED + 1))
+  fi
+}
+
 assert_contains() {
   local haystack="$1"
   local needle="$2"
@@ -234,9 +246,10 @@ assert_file_exists "$PROJECT_DIR/.job-search/config.json" ".job-search/config.js
 assert_file_exists "$PROJECT_DIR/.job-search/job-search.sqlite" ".job-search/job-search.sqlite created"
 assert_file_exists "$PROJECT_DIR/.job-search/resume.pdf" ".job-search/resume.pdf created"
 assert_file_exists "$PROJECT_DIR/.job-search/.gitignore" ".job-search/.gitignore created"
+assert_dir_exists "$PROJECT_DIR/.job-search/tmp" ".job-search/tmp directory created (PRO-32)"
 assert_file_exists "$PROJECT_DIR/.claude/plugins/job-search-automation/CLAUDE.md" "CLAUDE.md installed in plugin directory (PRO-31)"
 
-# Verify .claude/launch.json and .claude/settings.json created (PRO-30)
+# Verify .claude/launch.json and .claude/settings.json created (PRO-30, PRO-32)
 assert_file_exists "$PROJECT_DIR/.claude/launch.json" ".claude/launch.json created in project directory"
 LAUNCH_JSON_VALID="$(node -e "
 const fs = require('fs');
@@ -255,6 +268,12 @@ if (hasStart && hasPrefix && portMatch) {
 assert_equals "VALID" "$LAUNCH_JSON_VALID" ".claude/launch.json contains job-search-ui configuration with start script and port 3847"
 
 assert_file_exists "$PROJECT_DIR/.claude/settings.json" ".claude/settings.json created with permissions"
+SETTINGS_CONTENT="$(cat "$PROJECT_DIR/.claude/settings.json")"
+assert_contains "$SETTINGS_CONTENT" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json contains mkdir .job-search/tmp* permission (PRO-32)"
+assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json contains rm -rf ./.job-search/tmp* permission (PRO-32)"
+assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json contains rm -rf .job-search/tmp* permission (PRO-32)"
+assert_contains "$SETTINGS_CONTENT" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json contains rm -f ./.job-search/tmp/* permission (PRO-32)"
+assert_contains "$SETTINGS_CONTENT" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json contains rm -f .job-search/tmp/* permission (PRO-32)"
 
 # Verify relative path configuration
 CFG_DB_PATH="$(grep '"databasePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"databasePath":[[:space:]]*"([^"]+)".*/\1/')"

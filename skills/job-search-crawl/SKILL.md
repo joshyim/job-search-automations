@@ -19,7 +19,10 @@ This skill processes the single company passed via `$ARGUMENTS`. It expects the 
 ### 1. Crawl the job board
 
 Resolve the active workspace directory `<selected-directory>` (from user prompt/context, orchestrator call, or active workspace).
-Write ALL intermediate files to `<selected-directory>/.job-search/tmp/<company-slug>/`. Create the directory if it does not exist. Never write temp files to the repository root or outside this directory.
+
+The lightweight crawl script outputs JSON directly to stdout when run with `--json`. Agents should parse the JSON output directly in memory without writing intermediate files to disk whenever possible.
+
+If intermediate crawl data must be staged to disk, write strictly to `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`. Never create nested subdirectories or write temp files to the repository root or outside `.job-search/tmp/`.
 
 Primary method - the shared lightweight crawl script:
 
@@ -58,15 +61,19 @@ For each matched, non-duplicate posting, append it to the crawl queue via MCP to
 
 Each call adds the posting with status `pending`.
 
-### 4. Report
+### 4. Cleanup and Report
 
-Return a structured summary:
-- Company name
-- Total postings found on board / search
-- Postings matched against title patterns
-- Postings added to crawl queue
-- Postings skipped (already exist in queue/candidates)
-- Any errors or warnings encountered
+1. **Clean up intermediate files:**
+   - Delete any intermediate crawl file created during this run: `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`.
+   - Ensure `<selected-directory>/.job-search/tmp/` remains clean.
+
+2. **Return a structured summary:**
+   - Company name
+   - Total postings found on board / search
+   - Postings matched against title patterns
+   - Postings added to crawl queue
+   - Postings skipped (already exist in queue/candidates)
+   - Any errors or warnings encountered
 
 ## Gotchas
 

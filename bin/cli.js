@@ -315,6 +315,11 @@ async function handleSetup(args) {
   const grants = [
     `Bash(node ${crawlRel}:*)`,
     'Bash(mkdir -p ./.job-search/tmp*)',
+    'Bash(mkdir -p .job-search/tmp*)',
+    'Bash(rm -rf ./.job-search/tmp*)',
+    'Bash(rm -rf .job-search/tmp*)',
+    'Bash(rm -f ./.job-search/tmp/*)',
+    'Bash(rm -f .job-search/tmp/*)',
     'Read(./.job-search/**)',
     'Write(./.job-search/**)',
   ];
@@ -326,6 +331,7 @@ async function handleSetup(args) {
 
   // 4. Initialize <project>/.job-search/
   fs.mkdirSync(jobSearchDir, { recursive: true });
+  fs.mkdirSync(path.join(jobSearchDir, 'tmp'), { recursive: true });
 
   // Handle resume copy
   if (resumePath) {

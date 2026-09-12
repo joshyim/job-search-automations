@@ -31,10 +31,10 @@ Before processing:
 
 ### 1. Collect pending entries via MCP
 
-Call MCP tool `get_pending_queue({ company_name: "$ARGUMENTS" })`.
-Filter to entries where status is `pending`. If no entries are returned, report "nothing to assess" and return.
-
-For any pending URL that has already been recorded, call `update_queue_status({ url, status: "assessed", notes: "Already assessed" })`.
+1. **Check for staged crawl results:** If `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` exists from a preceding crawl run, inspect or cross-reference its staged postings with the queue.
+2. **Fetch pending entries:** Call MCP tool `get_pending_queue({ company_name: "$ARGUMENTS" })`.
+   Filter to entries where status is `pending`. If no entries are returned, delete any remaining staged crawl file for this company in `<selected-directory>/.job-search/tmp/`, report "nothing to assess", and return.
+3. For any pending URL that has already been recorded, call `update_queue_status({ url, status: "assessed", notes: "Already assessed" })`.
 
 ### 2. Fetch runtime rubric and skills via MCP
 
@@ -116,18 +116,23 @@ Prompt evaluation criteria:
 
 Each MCP call commits a durable checkpoint.
 
-### 4. Report
+### 4. Cleanup and Report
 
-Return a summary for the company:
-- Company name
-- Pending postings processed
-- Added to candidate pipeline (with titles and scores)
-- Skipped postings (with reasons)
-- Errors or network issues encountered
+1. **Clean up intermediate files:**
+   - Delete any intermediate crawl file for this company: `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`.
+   - Ensure `<selected-directory>/.job-search/tmp/` remains clean.
+
+2. **Return a summary for the company:**
+   - Company name
+   - Pending postings processed
+   - Added to candidate pipeline (with titles and scores)
+   - Skipped postings (with reasons)
+   - Errors or network issues encountered
 
 ## Rules
 
 - Write one candidate at a time through `add_candidate`. Each write is durable.
 - Do not perform direct file I/O on markdown tables. All queue and candidate updates must go through MCP tools.
 - Do not apply to any roles. Assessment and scoring only.
+- Clean up any ephemeral files in `<selected-directory>/.job-search/tmp/` upon completion.
 - On validation or fetch failure for an individual posting, mark it `skipped` in the queue via `update_queue_status` and continue.
