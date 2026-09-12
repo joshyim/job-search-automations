@@ -274,6 +274,55 @@ else
 fi
 
 echo ""
+echo "--- 9. Verifying Scheduled Task Bounded Scoping & Cost Control (PRO-33) ---"
+
+# crawl: eliminates mandatory websearch cross-referencing and forbids browser automation
+if ! grep -qi "always cross-reference with websearch regardless" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Eliminates mandatory redundant WebSearch cross-referencing"
+else
+  fail "job-search-crawl: Still contains mandatory WebSearch cross-referencing"
+fi
+
+if grep -qi "NEVER use interactive browser tools" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Forbids interactive browser tools during unattended crawls"
+else
+  fail "job-search-crawl: Missing interactive browser prohibition"
+fi
+
+# assess: enforces bounded pending queue batch size and fast failure without browser tools
+if grep -qi "at most 5 pending postings" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Caps pending queue assessment batch size"
+else
+  fail "job-search-assess: Missing pending queue batch cap"
+fi
+
+if grep -qi "NEVER use interactive browser tools" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Forbids interactive browser tools during unattended assessments"
+else
+  fail "job-search-assess: Missing interactive browser prohibition"
+fi
+
+if grep -qi "Fast failure" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Defines fast failure on unreachable or redirected URLs"
+else
+  fail "job-search-assess: Missing fast failure directive"
+fi
+
+# lead-gen: specifies message budget and bounded batch execution
+if grep -qi "40–50 messages" "$SKILLS_DIR/job-search-lead-gen/SKILL.md" || grep -qi "40-50 messages" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Documents message budget for batch runs"
+else
+  fail "job-search-lead-gen: Missing message budget in rules"
+fi
+
+# CLAUDE.md: documents scheduled & unattended execution guidelines
+if grep -qi "Scheduled & Unattended Execution Guidelines" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents Scheduled & Unattended Execution Guidelines"
+else
+  fail "CLAUDE.md: Missing Scheduled & Unattended Execution Guidelines section"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="

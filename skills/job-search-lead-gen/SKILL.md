@@ -113,3 +113,4 @@ Output the execution summary to the user:
 - Record every company run outcome using `log_run`.
 - Do not perform direct file I/O for pipeline state. All data operations MUST go through MCP tools (`get_batch`, `log_run`, `get_candidates`).
 - All temporary files (JSON extracts, helper scripts) MUST be written inside `<selected-directory>/.job-search/tmp/` (as flat files e.g. `<company-slug>-crawl.json`) and cleaned up in Phase C. Never create nested subdirectories.
+- **Budget and unattended execution:** Aim to complete batch runs within 40–50 messages. Maintain bounded batch sizes (`limit: 3` via `get_batch`), avoid open-ended exploration, and never use interactive browser automation (`Claude_Browser`) during unattended runs.

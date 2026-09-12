@@ -98,6 +98,14 @@ In a user's project workspace after installation, the source repo and git histor
    - **NEVER** create directories or write files in the project workspace or repo root (e.g. `./tmp/` or `./<company>/`). Never create nested subdirectories inside `.job-search/tmp/`. The flat `.job-search/tmp/` directory is pre-created during setup.
    - Pre-granted permissions in `.claude/settings.json` explicitly cover `mkdir` and `rm` for `.job-search/tmp*` and read/write for `.job-search/**` to guarantee unattended runs without prompts.
    - Both `job-search-crawl` and `job-search-assess` must clean up any temporary files in `.job-search/tmp/` upon run completion. Scored candidates and queue entries are committed to the SQLite database via MCP tools—never left as files on disk.
+8. **Scheduled & Unattended Execution Guidelines (Cost & Scoping Control)**:
+   - Scheduled tasks in Claude Code run unattended without user intervention. Because Claude scheduled tasks lack native message or token caps, execution bounds MUST be strictly enforced via prompt instructions, bounded batching, and fast-fail logic.
+   - **Message Budget**: Scheduled task prompts must state an explicit message budget: *"Complete within 40–50 messages. If more companies or pending postings remain, stop and let the next scheduled run continue."*
+   - **Batch Limits**:
+     - Crawl: Process at most 2–3 companies per scheduled run (via `get_batch({ limit: 3 })`).
+     - Assess: Process at most 5 pending postings per scheduled run (via `get_pending_queue`).
+   - **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple `WebFetch`.
+   - **Fast-Fail URLs**: If an ATS board is unreachable or a posting URL redirects/404s, immediately mark it skipped via `update_queue_status` and move to the next item. Never enter retry loops.
 
 ## Launching the Web UI Dashboard
 

@@ -840,5 +840,5 @@ echo -e "  ${BOLD}./setup.sh --update-resume <path-to-new-resume.pdf> --director
 echo ""
 echo -e "${CYAN}${BOLD}Recurring Pipeline Runs:${RESET}"
 echo "  Use the /schedule command to run the lead-gen orchestrator automatically:"
-echo "  /schedule CronExpression=\"0 9 * * 1-5\" Prompt=\"Run job-search-lead-gen for a batch of 5 companies in directory '$PROJECT_DIR'\""
+echo "  /schedule CronExpression=\"0 9 * * 1-5\" Prompt=\"Run job-search-lead-gen for a batch of 3 companies in directory '$PROJECT_DIR'. Complete within 50 messages.\""
 echo ""

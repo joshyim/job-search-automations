@@ -225,18 +225,18 @@ Access the dashboard at `http://localhost:3847`. If port `3847` is already in us
 
 ## Recurring Pipeline Scheduling (via `/schedule`)
 
-Automate your job search on a recurring schedule using your agent harness's scheduling mechanism:
+Automate your job search on a recurring schedule using your agent harness's scheduling mechanism. Scheduled tasks run unattended, so prompts should include an explicit message budget and batch limit:
 
 ### Weekday Morning Pipeline Run
-Run the lead generation orchestrator every weekday morning at 9:00 AM:
+Run the lead generation orchestrator every weekday morning at 9:00 AM with a bounded batch and message budget:
 ```text
-/schedule CronExpression="0 9 * * 1-5" Prompt="Run job-search-lead-gen for a batch of 5 companies"
+/schedule CronExpression="0 9 * * 1-5" Prompt="Run job-search-lead-gen for a batch of 3 companies. Complete within 50 messages. If more companies remain, stop and let the next scheduled run continue."
 ```
 
 ### Daily Pipeline Assessment Run
-Process and score pending crawl queue postings daily at 6:00 PM:
+Process and score pending crawl queue postings daily at 6:00 PM (up to 5 postings per run):
 ```text
-/schedule CronExpression="0 18 * * *" Prompt="Run job-search-assess for all pending crawl queue entries"
+/schedule CronExpression="0 18 * * *" Prompt="Run job-search-assess for up to 5 pending crawl queue entries. Complete within 40 messages."
 ```
 
 ---

@@ -34,7 +34,10 @@ Before processing:
 1. **Check for staged crawl results:** If `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` exists from a preceding crawl run, inspect or cross-reference its staged postings with the queue.
 2. **Fetch pending entries:** Call MCP tool `get_pending_queue({ company_name: "$ARGUMENTS" })`.
    Filter to entries where status is `pending`. If no entries are returned, delete any remaining staged crawl file for this company in `<selected-directory>/.job-search/tmp/`, report "nothing to assess", and return.
-3. For any pending URL that has already been recorded, call `update_queue_status({ url, status: "assessed", notes: "Already assessed" })`.
+3. **Enforce bounded batch limit:**
+   - To keep scheduled and unattended runs bounded in time and token cost, **assess at most 5 pending postings per run** (or up to 10 if explicitly specified).
+   - If more pending postings exist, process the first 5 in queue order. The remaining postings remain `pending` for the next scheduled run.
+4. For any pending URL that has already been recorded, call `update_queue_status({ url, status: "assessed", notes: "Already assessed" })`.
 
 ### 2. Fetch runtime rubric and skills via MCP
 
@@ -58,9 +61,13 @@ Before processing:
 
 ### 3. Process each posting individually
 
-For each pending posting, in queue order:
+For each pending posting in the bounded batch, in queue order:
 
-**Validate:** Fetch the posting URL content.
+**Validate:** Fetch the posting URL content using lightweight HTTP fetch or Claude Code's native `WebFetch`.
+- **Fast failure:** If the URL returns 404/410, redirects to a generic careers board/homepage, or fails to fetch:
+  - Immediately call MCP tool `update_queue_status({ url: "<posting_url>", status: "skipped", notes: "Page unavailable or redirected to generic careers board" })`.
+  - Proceed directly to the next posting without retrying.
+- **Strict browser prohibition:** **NEVER use interactive browser tools** (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended assessment runs.
 - Confirm role is open (page has job title + application form/button). Mark closed only if the page states "no longer accepting applications", "position filled", or returns 404/410.
 - Confirm location: accept Remote (US), Seattle / Kirkland WA, SF Bay Area, or hybrid in those locations.
 - Exclude hard domain mismatches (e.g. cybersecurity, defense/government, child safety, pure hardware engineering).

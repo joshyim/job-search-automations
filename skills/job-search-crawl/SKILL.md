@@ -33,9 +33,12 @@ node .claude/plugins/job-search-automation/scripts/crawl-job-board.js "<job-boar
 node scripts/crawl-job-board.js "<job-board-url>" --json
 ```
 
-If zero results, try appending `?q=product+manager` or use WebSearch with `site:{career-domain} "product manager"`.
-
-Always cross-reference with WebSearch regardless: `{company} "product manager" site:{career-domain}`. Merge any additional posting URLs.
+**Efficiency and Unattended Execution Rules:**
+- Parse the JSON output directly in memory. Do not narrate intermediate parsing steps.
+- If the lightweight crawler returns listings, **do NOT run redundant WebSearch queries**. Use the extracted listings directly.
+- Only if the lightweight crawler fails or yields zero listings on custom non-ATS job boards, use Claude Code's native `WebSearch` / `WebFetch` as a fallback.
+- **NEVER use interactive browser tools** (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended or scheduled crawls.
+- Fast failure: If a company careers board is unreachable or yields no matching postings, log the result and advance to the next company immediately. Do not explore alternative sub-pages or retry in loops.
 
 ### 2. Match and dedup via MCP
 
