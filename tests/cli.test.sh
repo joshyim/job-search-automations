@@ -166,6 +166,26 @@ console.log(cfg.mcpServers['job-search-db'].args[0]);
 ")"
 assert_equals "./.claude/plugins/job-search-automation/packages/job-search-db/scripts/start.js" "$RELATIVE_MCP_ARG" ".mcp.json uses relative path to launcher"
 
+# .claude/launch.json and settings.json verification (PRO-30)
+LAUNCH_JSON="$PROJECT_DIR/.claude/launch.json"
+assert_file_exists "$LAUNCH_JSON" ".claude/launch.json created for web preview"
+CLI_LAUNCH_VALID="$(node -e "
+const fs = require('fs');
+const cfg = JSON.parse(fs.readFileSync('$LAUNCH_JSON', 'utf-8'));
+const entry = cfg.configurations && cfg.configurations.find(c => c.name === 'job-search-ui');
+if (!entry) { console.log('MISSING_ENTRY'); process.exit(0); }
+const hasStart = entry.runtimeArgs && entry.runtimeArgs.includes('start') && !entry.runtimeArgs.includes('dev');
+const hasPrefix = entry.runtimeArgs && entry.runtimeArgs.includes('--prefix') && entry.runtimeArgs.some(a => a.includes('.claude/plugins/job-search-automation/packages/job-search-ui'));
+const portMatch = entry.port === 3847;
+if (hasStart && hasPrefix && portMatch) {
+  console.log('VALID');
+} else {
+  console.log('INVALID: ' + JSON.stringify(entry));
+}
+")"
+assert_equals "VALID" "$CLI_LAUNCH_VALID" ".claude/launch.json uses start script and relative prefix"
+assert_file_exists "$PROJECT_DIR/.claude/settings.json" ".claude/settings.json created for unattended runs"
+
 # .job-search/ workspace verification
 assert_dir_exists "$PROJECT_DIR/.job-search" ".job-search/ workspace created"
 assert_file_exists "$PROJECT_DIR/.job-search/job-search.sqlite" "job-search.sqlite created"
@@ -327,6 +347,17 @@ if [ -f "$MCP_JSON" ]; then
   assert_equals "NO" "$HAS_MCP_SERVER" "job-search-db removed from .mcp.json"
 else
   pass ".mcp.json cleanly deleted as it was empty"
+fi
+
+# Verify .claude/launch.json cleaned up
+if [ -f "$LAUNCH_JSON" ]; then
+  HAS_LAUNCH_ENTRY="$(node -e "
+  const cfg = JSON.parse(require('fs').readFileSync('$LAUNCH_JSON'));
+  console.log(cfg.configurations && cfg.configurations.some(c => c.name === 'job-search-ui') ? 'YES' : 'NO');
+  ")"
+  assert_equals "NO" "$HAS_LAUNCH_ENTRY" "job-search-ui removed from .claude/launch.json"
+else
+  pass ".claude/launch.json cleanly deleted as it was empty"
 fi
 
 # ------------------------------------------------------------------------------

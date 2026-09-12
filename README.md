@@ -90,6 +90,7 @@ npx @personal-automation/job-search-automation setup --directory /path/to/your/w
 ```
 - Copies runtime-necessary files into `<selected-directory>/.claude/plugins/job-search-automation/`.
 - Configures `<selected-directory>/.mcp.json` with relative paths.
+- Configures `<selected-directory>/.claude/launch.json` for Claude Desktop web preview.
 - Conforms strictly to the Agent Plugins specification with **zero symlinks**.
 - Stores data and configuration self-contained inside `<selected-directory>/.job-search/` (`job-search.sqlite`, `resume.pdf`, `config.json`).
 
@@ -192,8 +193,20 @@ Used natively by Claude Code (Desktop & CLI):
 
 ## Local Web Dashboard
 
-The plugin includes a local single-page dashboard for inspecting pipeline statistics, managing target companies, reviewing candidates, and customizing the scoring rubric:
+The plugin includes a local single-page dashboard for inspecting pipeline statistics, managing target companies, reviewing candidates, and customizing the scoring rubric.
 
+### In an Installed Project Workspace
+- **Claude Desktop**: Launch via the built-in web preview using the pre-configured `job-search-ui` entry in `.claude/launch.json`.
+- **Terminal**: Run the start script via npm prefix:
+  ```bash
+  npm run start --prefix ./.claude/plugins/job-search-automation/packages/job-search-ui
+  ```
+  Or run the launcher directly:
+  ```bash
+  node ./.claude/plugins/job-search-automation/packages/job-search-ui/scripts/start.js
+  ```
+
+### In the Source Repository (Development)
 ```bash
 # Build and start the dashboard server (default port 3847):
 npm run ui
@@ -205,6 +218,7 @@ npm run ui:dev
 npm run ui -- --port 3850
 PORT=3850 npm run ui
 ```
+
 Access the dashboard at `http://localhost:3847`. If port `3847` is already in use by another process, the server automatically detects the conflict, increments to the next available free port (e.g., `3848`), and prints the bound URL to stdout.
 
 ---

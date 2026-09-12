@@ -737,6 +737,72 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
   "
   echo -e "${GREEN}[+] MCP configuration updated:${RESET} $MCP_FILE"
 
+  # Pre-grant permissions the plugin's own skills need, scoped to this workspace,
+  # so scheduled/unattended runs (crawl, assess) never stall on an approval prompt.
+  SETTINGS_FILE="$PROJECT_DIR/.claude/settings.json"
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const projectDir = '$PROJECT_DIR';
+    const pluginDir = '$TARGET_PLUGIN_DIR';
+    const settingsFile = '$SETTINGS_FILE';
+    fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+
+    let cfg = {};
+    if (fs.existsSync(settingsFile)) {
+      try { cfg = JSON.parse(fs.readFileSync(settingsFile, 'utf-8')); } catch {}
+    }
+    if (typeof cfg.permissions !== 'object' || cfg.permissions === null) cfg.permissions = {};
+    if (!Array.isArray(cfg.permissions.allow)) cfg.permissions.allow = [];
+
+    let crawlRel = path.relative(projectDir, path.join(pluginDir, 'scripts', 'crawl-job-board.js'));
+    if (!crawlRel.startsWith('.') && !crawlRel.startsWith('/')) crawlRel = './' + crawlRel;
+
+    const grants = [
+      'Bash(node ' + crawlRel + ':*)',
+      'Bash(mkdir -p ./.job-search/tmp*)',
+      'Read(./.job-search/**)',
+      'Write(./.job-search/**)'
+    ];
+    for (const g of grants) {
+      if (!cfg.permissions.allow.includes(g)) cfg.permissions.allow.push(g);
+    }
+    fs.writeFileSync(settingsFile, JSON.stringify(cfg, null, 2) + '\n');
+  "
+  echo -e "${GREEN}[+] Permissions pre-granted for unattended runs:${RESET} $SETTINGS_FILE"
+
+  # Configure project .claude/launch.json for web preview
+  LAUNCH_FILE="$PROJECT_DIR/.claude/launch.json"
+  node -e "
+    const fs = require('fs');
+    const path = require('path');
+    const projectDir = '$PROJECT_DIR';
+    const pluginDir = '$TARGET_PLUGIN_DIR';
+    const launchFile = '$LAUNCH_FILE';
+    fs.mkdirSync(path.dirname(launchFile), { recursive: true });
+
+    let cfg = { version: '0.0.1', configurations: [] };
+    if (fs.existsSync(launchFile)) {
+      try {
+        cfg = JSON.parse(fs.readFileSync(launchFile, 'utf-8'));
+        if (!Array.isArray(cfg.configurations)) cfg.configurations = [];
+      } catch {}
+    }
+
+    let uiRel = path.relative(projectDir, path.join(pluginDir, 'packages', 'job-search-ui'));
+    if (!uiRel.startsWith('.') && !uiRel.startsWith('/')) uiRel = './' + uiRel;
+
+    cfg.configurations = cfg.configurations.filter(c => c && c.name !== 'job-search-ui');
+    cfg.configurations.push({
+      name: 'job-search-ui',
+      runtimeExecutable: 'npm',
+      runtimeArgs: ['run', 'start', '--prefix', uiRel],
+      port: 3847
+    });
+    fs.writeFileSync(launchFile, JSON.stringify(cfg, null, 2) + '\n');
+  "
+  echo -e "${GREEN}[+] Claude launch configuration created:${RESET} $LAUNCH_FILE"
+
   if [ -f "$PROJECT_DIR/.gitignore" ]; then
     if ! grep -q "\.claude/plugins/" "$PROJECT_DIR/.gitignore"; then
       echo -e "\n# Installed Agent Plugins\n.claude/plugins/" >> "$PROJECT_DIR/.gitignore"
@@ -756,6 +822,12 @@ echo -e "  Workspace Dir:     ${BOLD}$JOB_SEARCH_DIR${RESET}"
 echo -e "  Database:          ${BOLD}$TARGET_SQLITE${RESET}"
 echo -e "  Resume:            ${BOLD}$TARGET_RESUME${RESET}"
 echo -e "  Configuration:     ${BOLD}$CONFIG_FILE${RESET}"
+if [ -n "$LAUNCH_FILE" ] && [ -f "$LAUNCH_FILE" ]; then
+  echo -e "  Launch Config:     ${BOLD}$LAUNCH_FILE${RESET}"
+fi
+if [ -n "$SETTINGS_FILE" ] && [ -f "$SETTINGS_FILE" ]; then
+  echo -e "  Permissions:       ${BOLD}$SETTINGS_FILE${RESET} (pre-granted crawler exec + .job-search/ read-write, so scheduled runs won't prompt)"
+fi
 echo ""
 echo -e "To update your resume in the future, run:"
 echo -e "  ${BOLD}./setup.sh --update-resume <path-to-new-resume.pdf> --directory \"$PROJECT_DIR\"${RESET}"

@@ -235,6 +235,26 @@ assert_file_exists "$PROJECT_DIR/.job-search/job-search.sqlite" ".job-search/job
 assert_file_exists "$PROJECT_DIR/.job-search/resume.pdf" ".job-search/resume.pdf created"
 assert_file_exists "$PROJECT_DIR/.job-search/.gitignore" ".job-search/.gitignore created"
 
+# Verify .claude/launch.json and .claude/settings.json created (PRO-30)
+assert_file_exists "$PROJECT_DIR/.claude/launch.json" ".claude/launch.json created in project directory"
+LAUNCH_JSON_VALID="$(node -e "
+const fs = require('fs');
+const cfg = JSON.parse(fs.readFileSync('$PROJECT_DIR/.claude/launch.json', 'utf-8'));
+const entry = cfg.configurations && cfg.configurations.find(c => c.name === 'job-search-ui');
+if (!entry) { console.log('MISSING_ENTRY'); process.exit(0); }
+const hasStart = entry.runtimeArgs && entry.runtimeArgs.includes('start') && !entry.runtimeArgs.includes('dev');
+const hasPrefix = entry.runtimeArgs && entry.runtimeArgs.includes('--prefix') && entry.runtimeArgs.some(a => a.includes('.claude/plugins/job-search-automation/packages/job-search-ui'));
+const portMatch = entry.port === 3847;
+if (hasStart && hasPrefix && portMatch) {
+  console.log('VALID');
+} else {
+  console.log('INVALID: ' + JSON.stringify(entry));
+}
+")"
+assert_equals "VALID" "$LAUNCH_JSON_VALID" ".claude/launch.json contains job-search-ui configuration with start script and port 3847"
+
+assert_file_exists "$PROJECT_DIR/.claude/settings.json" ".claude/settings.json created with permissions"
+
 # Verify relative path configuration
 CFG_DB_PATH="$(grep '"databasePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"databasePath":[[:space:]]*"([^"]+)".*/\1/')"
 CFG_RES_PATH="$(grep '"resumePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"resumePath":[[:space:]]*"([^"]+)".*/\1/')"

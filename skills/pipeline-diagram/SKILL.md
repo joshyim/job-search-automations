@@ -16,7 +16,7 @@ Ensure documentation and visual architecture maps stay synchronized with code ch
 
 - **Diagram Templates**: `templates/pipeline-overview.md`
 - **Skill Definitions**: `skills/*/SKILL.md`
-- **MCP Server Surface**: `packages/job-search-db/src/tools/*.ts` and `mcp.json`
+- **MCP Server Surface**: Active MCP tools / `mcp.json` (or `packages/job-search-db/src/tools/*.ts` in source repo)
 - **Crawler Scripts**: `scripts/crawl-job-board.js`
 
 ## Steps
@@ -36,7 +36,7 @@ Ensure documentation and visual architecture maps stay synchronized with code ch
 
 ### 2. Introspect MCP Tool Surface
 
-Inspect registered MCP tools in `packages/job-search-db/src/tools/`:
+Inspect registered MCP tools via active MCP server / `mcp.json` (or `packages/job-search-db/src/tools/` in source repo):
 - **Companies**: `list_companies`, `add_company`, `exclude_company`, `get_batch`
 - **Titles**: `list_title_patterns`, `add_title_pattern`, `remove_title_pattern`
 - **Skills**: `list_skills`

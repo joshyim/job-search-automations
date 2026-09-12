@@ -270,6 +270,60 @@ async function handleSetup(args) {
   fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
   console.log(`${GREEN}[+] MCP configuration updated:${RESET} ${mcpJsonPath}`);
 
+  // 3.1 Configure <project>/.claude/launch.json for web preview
+  const claudeDir = path.join(projectDir, '.claude');
+  fs.mkdirSync(claudeDir, { recursive: true });
+  const launchFilePath = path.join(claudeDir, 'launch.json');
+  let launchConfig = { version: '0.0.1', configurations: [] };
+  if (fs.existsSync(launchFilePath)) {
+    try {
+      launchConfig = JSON.parse(fs.readFileSync(launchFilePath, 'utf-8'));
+      if (!Array.isArray(launchConfig.configurations)) launchConfig.configurations = [];
+    } catch {}
+  }
+
+  const uiPkgDir = path.join(pluginDir, 'packages', 'job-search-ui');
+  let relativeUiPkg = path.relative(projectDir, uiPkgDir);
+  if (!relativeUiPkg.startsWith('.') && !relativeUiPkg.startsWith('/')) {
+    relativeUiPkg = `./${relativeUiPkg}`;
+  }
+
+  launchConfig.configurations = launchConfig.configurations.filter((c) => c && c.name !== 'job-search-ui');
+  launchConfig.configurations.push({
+    name: 'job-search-ui',
+    runtimeExecutable: 'npm',
+    runtimeArgs: ['run', 'start', '--prefix', relativeUiPkg],
+    port: 3847,
+  });
+  fs.writeFileSync(launchFilePath, JSON.stringify(launchConfig, null, 2) + '\n');
+  console.log(`${GREEN}[+] Claude launch configuration created:${RESET} ${launchFilePath}`);
+
+  // 3.2 Pre-grant permissions in <project>/.claude/settings.json
+  const settingsFilePath = path.join(claudeDir, 'settings.json');
+  let settingsConfig = {};
+  if (fs.existsSync(settingsFilePath)) {
+    try {
+      settingsConfig = JSON.parse(fs.readFileSync(settingsFilePath, 'utf-8'));
+    } catch {}
+  }
+  if (typeof settingsConfig.permissions !== 'object' || settingsConfig.permissions === null) settingsConfig.permissions = {};
+  if (!Array.isArray(settingsConfig.permissions.allow)) settingsConfig.permissions.allow = [];
+
+  let crawlRel = path.relative(projectDir, path.join(pluginDir, 'scripts', 'crawl-job-board.js'));
+  if (!crawlRel.startsWith('.') && !crawlRel.startsWith('/')) crawlRel = `./${crawlRel}`;
+
+  const grants = [
+    `Bash(node ${crawlRel}:*)`,
+    'Bash(mkdir -p ./.job-search/tmp*)',
+    'Read(./.job-search/**)',
+    'Write(./.job-search/**)',
+  ];
+  for (const g of grants) {
+    if (!settingsConfig.permissions.allow.includes(g)) settingsConfig.permissions.allow.push(g);
+  }
+  fs.writeFileSync(settingsFilePath, JSON.stringify(settingsConfig, null, 2) + '\n');
+  console.log(`${GREEN}[+] Permissions pre-granted for unattended runs:${RESET} ${settingsFilePath}`);
+
   // 4. Initialize <project>/.job-search/
   fs.mkdirSync(jobSearchDir, { recursive: true });
 
@@ -447,6 +501,8 @@ async function handleSetup(args) {
   console.log(`  Database:          ${BOLD}${targetSqlite}${RESET}`);
   console.log(`  Resume:            ${BOLD}${targetResume}${RESET}`);
   console.log(`  Configuration:     ${BOLD}${configFile}${RESET}`);
+  console.log(`  Launch Config:     ${BOLD}${launchFilePath}${RESET}`);
+  console.log(`  Permissions:       ${BOLD}${settingsFilePath}${RESET}`);
   console.log(`\nPlease restart your Claude session for skills and MCP tools to load.`);
 }
 
@@ -572,7 +628,25 @@ async function handleUninstall(args) {
     } catch {}
   }
 
-  // 3. User data preservation
+  // 3. Remove job-search-ui from .claude/launch.json
+  const launchFilePath = path.join(projectDir, '.claude', 'launch.json');
+  if (fs.existsSync(launchFilePath)) {
+    try {
+      const launchConfig = JSON.parse(fs.readFileSync(launchFilePath, 'utf-8'));
+      if (Array.isArray(launchConfig.configurations)) {
+        launchConfig.configurations = launchConfig.configurations.filter((c) => c && c.name !== 'job-search-ui');
+        if (launchConfig.configurations.length === 0) {
+          fs.rmSync(launchFilePath);
+          console.log(`${GREEN}[+] Cleaned up empty .claude/launch.json${RESET}`);
+        } else {
+          fs.writeFileSync(launchFilePath, JSON.stringify(launchConfig, null, 2) + '\n');
+          console.log(`${GREEN}[+] Removed job-search-ui from .claude/launch.json${RESET}`);
+        }
+      }
+    } catch {}
+  }
+
+  // 4. User data preservation
   const jobSearchDir = path.join(projectDir, '.job-search');
   if (purgeData) {
     if (fs.existsSync(jobSearchDir)) {
