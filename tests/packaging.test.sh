@@ -277,6 +277,22 @@ fi
 echo -e "\n${BOLD}[Story 5] Claude Code & Cowork Manifests Conformance${RESET}"
 
 assert_file_exists "$PLUGIN_ROOT/CLAUDE.md" "CLAUDE.md exists for Claude Cowork / Code guidance"
+if grep -q "## Runtime Architecture" "$PLUGIN_ROOT/CLAUDE.md" && \
+   grep -q "\.job-search/" "$PLUGIN_ROOT/CLAUDE.md" && \
+   grep -q "\.claude/plugins/job-search-automation/" "$PLUGIN_ROOT/CLAUDE.md" && \
+   grep -q "\.mcp\.json" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md documents three-component Runtime Architecture (PRO-31)"
+else
+  fail "CLAUDE.md missing Runtime Architecture section or key components (PRO-31)"
+fi
+
+if grep -qi "git" "$PLUGIN_ROOT/CLAUDE.md" && \
+   grep -q "package\.json" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md explicitly defines runtime file layout and forbids searching for git / root package files (PRO-31)"
+else
+  fail "CLAUDE.md missing explicit runtime file layout rules (PRO-31)"
+fi
+
 assert_file_exists "$PLUGIN_ROOT/.claude-plugin/marketplace.json" ".claude-plugin/marketplace.json exists"
 assert_file_exists "$PLUGIN_ROOT/.claude-plugin/plugin.json" ".claude-plugin/plugin.json exists"
 assert_file_exists "$PLUGIN_ROOT/.mcp.json" ".mcp.json exists at plugin root"

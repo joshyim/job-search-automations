@@ -691,7 +691,7 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
       }
     }
 
-    for (const f of ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql']) {
+    for (const f of ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql', 'CLAUDE.md']) {
       const s = path.join(repoRoot, f);
       if (fs.existsSync(s)) fs.copyFileSync(s, path.join(pluginDir, f));
     }

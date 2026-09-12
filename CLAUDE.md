@@ -37,34 +37,60 @@ When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to inst
      > *"Your job search pipeline is ready! What job titles, locations, or target companies would you like to start with?"*
    - Save their preferences and offer to run their first search using `company-search` or `job-search-lead-gen`.
 
+## Runtime Architecture
+
+The Job Search Automation workspace operates on a clean separation of three components:
+
+1. **`.job-search/` — Persistent User Data (Source of Truth)**:
+   - Contains persistent user state: `job-search.sqlite` (SQLite database), `resume.pdf` (active resume), `config.json` (runtime configuration), and ephemeral `tmp/` (crawl staging).
+   - This directory is the **single source of truth** for all user data, search targets, crawl queues, candidate evaluations, and run logs.
+   - It survives session resets, git branch switches, re-installations, and host restarts. It **always exists** once setup has run.
+
+2. **`.claude/plugins/job-search-automation/` — Plugin Runtime Code (Read-Only)**:
+   - Self-contained plugin package installed once during setup.
+   - Contains pre-compiled packages (`packages/job-search-db` and `packages/job-search-ui` with production bundles in `dist/` and `public/`), declarative agent skills (`skills/`), standalone scripts (`scripts/crawl-job-board.js`), manifests (`plugin.json`, `mcp.json`), and schema definitions (`schema.sql`).
+   - It is strictly **read-only** at runtime. It does NOT require `npm install`, TypeScript compilation, or source rebuilds.
+
+3. **`.mcp.json` — MCP Server Configuration (Host Integration)**:
+   - MCP configuration at the project root pointing the host agent to the database MCP server launcher (`./.claude/plugins/job-search-automation/packages/job-search-db/scripts/start.js`).
+   - Connects agent tools directly to the `.job-search/` SQLite database.
+
 ## Post-Install Runtime Environment & Agent Directives
 
 > [!CRITICAL]
-> **NEVER assume the source repository or repo-root `packages/` exist at runtime.**
+> **NEVER assume the source repository, git history, or repo-root files exist at runtime.**
+> Only the three runtime components above (`.job-search/`, `.claude/plugins/job-search-automation/`, and `.mcp.json`), plus `.claude/launch.json` and `.claude/settings.json`, exist in an installed workspace.
+> **No other files are needed, required, or expected.**
 
-In a user's project workspace after installation, the source repository is **not present**. Only the following files and directories exist:
-- `<selected-directory>/.claude/plugins/job-search-automation/`: The self-contained plugin package containing:
+### Explicit Runtime File Layout
+
+In a user's project workspace after installation, the source repo and git history are **not present**. ONLY the following files and directories exist:
+- `<selected-directory>/.job-search/`: Persistent workspace data (`job-search.sqlite`, `resume.pdf`, `config.json`, and ephemeral `tmp/`)
+- `<selected-directory>/.claude/plugins/job-search-automation/`: The self-contained, pre-compiled plugin package containing:
   - Built packages (`packages/job-search-db` and `packages/job-search-ui`) with pre-compiled `dist/`, `public/`, and `scripts/start.js`
   - Skills in `skills/`
   - Lightweight crawler in `scripts/crawl-job-board.js`
-  - Plugin manifests (`plugin.json`, `mcp.json`) and `schema.sql`
-- `<selected-directory>/.job-search/`: Persistent workspace data (`job-search.sqlite`, `resume.pdf`, `config.json`, and ephemeral `tmp/`)
+  - Plugin manifests (`plugin.json`, `mcp.json`, `CLAUDE.md`) and `schema.sql`
 - `<selected-directory>/.mcp.json`: MCP server configuration pointing to `./.claude/plugins/job-search-automation/packages/job-search-db/scripts/start.js`
 - `<selected-directory>/.claude/launch.json`: Claude Desktop web preview configuration for the UI dashboard
 - `<selected-directory>/.claude/settings.json`: Pre-granted permissions for unattended runs
 
 ### Mandatory Agent Rules
 
-1. **Never reference source repository paths**:
-   Paths like `packages/job-search-ui/` or `packages/job-search-db/` **do not exist** at the project root. Never run commands like `npm install`, `npm test`, or `cd` targeting repo-relative package directories.
-2. **Always reference installed plugin paths**:
+1. **Do NOT search for or attempt to restore Git files**:
+   The workspace does NOT contain a `.git` folder, git history, or git commits. Never run `git status`, `git checkout`, `git restore`, `git rev-parse`, or investigate missing git files. The plugin does not need or use git.
+2. **Do NOT look for or scaffold root `package.json` or `node_modules`**:
+   Neither `package.json` nor `node_modules` exists at the project root. Never run `npm init`, `npm install`, or try to reconstruct package manifests at the project root. All dependencies are pre-bundled inside `.claude/plugins/job-search-automation/packages/`.
+3. **Never reference source repository paths**:
+   Paths like `packages/job-search-ui/` or `packages/job-search-db/` **do not exist** at the project root. Never run commands targeting repo-relative package directories.
+4. **Always reference installed plugin paths**:
    All package assets and scripts live under `.claude/plugins/job-search-automation/`. For example:
    - Crawler: `node .claude/plugins/job-search-automation/scripts/crawl-job-board.js "<url>" --json`
    - UI Dashboard: `npm run start --prefix ./.claude/plugins/job-search-automation/packages/job-search-ui`
    - Database MCP: Handled automatically via `.mcp.json` (`./.claude/plugins/job-search-automation/packages/job-search-db/scripts/start.js`)
-3. **Use `start`, NEVER `dev`**:
+5. **Use `start`, NEVER `dev`**:
    The plugin installation ships pre-compiled production bundles (`dist/` and `public/`). The TypeScript source directory `src/` is intentionally excluded from the plugin distribution. Running `npm run dev` or `tsx src/server.ts` will fail. Always use `npm run start` (or execute `scripts/start.js`).
-4. **Never run `npm install` in the project root or package directories**:
+6. **Never run `npm install` in the project root or package directories**:
    Dependencies are already bundled or resolved within `.claude/plugins/job-search-automation/packages/`. Running `npm install` at the project root or against deleted repo paths will fail.
 
 ## Launching the Web UI Dashboard

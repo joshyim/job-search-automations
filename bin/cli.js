@@ -182,8 +182,8 @@ async function handleSetup(args) {
     return true;
   };
 
-  // Copy root manifests
-  const rootFiles = ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql'];
+  // Copy root manifests and agent guidelines
+  const rootFiles = ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql', 'CLAUDE.md'];
   for (const f of rootFiles) {
     const src = path.join(REPO_ROOT, f);
     if (fs.existsSync(src)) {

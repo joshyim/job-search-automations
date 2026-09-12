@@ -127,6 +127,7 @@ assert_file_exists "$PLUGIN_DIR/plugin.json" "plugin.json exists in installed pl
 assert_file_exists "$PLUGIN_DIR/mcp.json" "mcp.json exists in installed plugin"
 assert_file_exists "$PLUGIN_DIR/.mcp.json" ".mcp.json exists in installed plugin"
 assert_file_exists "$PLUGIN_DIR/schema.sql" "schema.sql exists in installed plugin"
+assert_file_exists "$PLUGIN_DIR/CLAUDE.md" "CLAUDE.md exists in installed plugin (PRO-31)"
 
 # Skills verification (per Agent Plugins spec §6.1, §7.1)
 assert_dir_exists "$PLUGIN_DIR/skills" "skills/ directory exists in installed plugin"
@@ -372,6 +373,7 @@ SETUP_SH_OUT="$("$ROOT_DIR/setup.sh" --install-to "$CUSTOM_PLUGIN_DIR" --directo
 assert_contains "$SETUP_SH_OUT" "Setup Complete!" "setup.sh reported completion"
 assert_dir_exists "$CUSTOM_PLUGIN_DIR" "Plugin installed to custom --install-to path"
 assert_file_exists "$CUSTOM_PLUGIN_DIR/plugin.json" "plugin.json exists in custom install dir"
+assert_file_exists "$CUSTOM_PLUGIN_DIR/CLAUDE.md" "CLAUDE.md exists in custom install dir (PRO-31)"
 assert_file_exists "$CUSTOM_PLUGIN_DIR/skills/job-search-assess/SKILL.md" "Skills exist in custom install dir"
 assert_file_exists "$CUSTOM_PROJECT_DIR/.mcp.json" ".mcp.json configured in project dir"
 
