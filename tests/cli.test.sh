@@ -203,6 +203,28 @@ assert_contains "$CLI_SETTINGS" "Bash(rm -rf .job-search/tmp*)" ".claude/setting
 assert_contains "$CLI_SETTINGS" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json contains rm -f ./.job-search/tmp/* permission (PRO-32)"
 assert_contains "$CLI_SETTINGS" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json contains rm -f .job-search/tmp/* permission (PRO-32)"
 
+# PRO-34 permissions assertions
+assert_contains "$CLI_SETTINGS" "scripts/crawl-job-board.js:*" ".claude/settings.json contains crawler execution grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "Bash(mkdir -p $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp mkdir grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "Bash(rm -rf $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp rm grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "Read($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Read grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "Write($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Write grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "Read($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Read grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "Write($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Write grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "mcp__job-search-db__*" ".claude/settings.json contains mcp wildcard grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "mcp__job-search-db__get_pending_queue" ".claude/settings.json contains mcp queue grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "mcp__job-search-db__list_companies" ".claude/settings.json contains mcp companies grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "WebSearch" ".claude/settings.json contains WebSearch grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "WebFetch" ".claude/settings.json contains WebFetch grant (PRO-34)"
+
+# PRO-34 post-install transparent permissions summary assertions
+assert_contains "$SETUP_OUT" "Permissions:" "CLI outputs Permissions in summary (PRO-34)"
+assert_contains "$SETUP_OUT" "Scoped Read/Write:" "CLI details Scoped Read/Write grant in summary (PRO-34)"
+assert_contains "$SETUP_OUT" "Crawler Script:" "CLI details Crawler Script grant in summary (PRO-34)"
+assert_contains "$SETUP_OUT" "Ephemeral Temp:" "CLI details Ephemeral Temp grant in summary (PRO-34)"
+assert_contains "$SETUP_OUT" "MCP Database:" "CLI details MCP Database grant in summary (PRO-34)"
+assert_contains "$SETUP_OUT" "Web Access:" "CLI details Web Access grant in summary (PRO-34)"
+
 CONFIG_PERM="$(stat -f "%Lp" "$PROJECT_DIR/.job-search/config.json" 2>/dev/null || stat -c "%a" "$PROJECT_DIR/.job-search/config.json" 2>/dev/null)"
 assert_equals "600" "$CONFIG_PERM" "config.json permissions are 0600"
 

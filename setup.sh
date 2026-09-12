@@ -756,19 +756,84 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
     if (typeof cfg.permissions !== 'object' || cfg.permissions === null) cfg.permissions = {};
     if (!Array.isArray(cfg.permissions.allow)) cfg.permissions.allow = [];
 
-    let crawlRel = path.relative(projectDir, path.join(pluginDir, 'scripts', 'crawl-job-board.js'));
+    const absCrawler = path.join(pluginDir, 'scripts', 'crawl-job-board.js');
+    const absTmp = path.join(projectDir, '.job-search', 'tmp');
+    const absJobSearch = path.join(projectDir, '.job-search');
+
+    let crawlRel = path.relative(projectDir, absCrawler);
     if (!crawlRel.startsWith('.') && !crawlRel.startsWith('/')) crawlRel = './' + crawlRel;
 
     const grants = [
+      // Crawler script execution (relative and absolute paths)
       'Bash(node ' + crawlRel + ':*)',
+      'Bash(node ./' + crawlRel.replace(/^\.\//, '') + ':*)',
+      'Bash(node ' + absCrawler + ':*)',
+      'Bash(node \"' + absCrawler + '\":*)',
+
+      // Ephemeral tmp directory creation, cleanup, and tee
+      'Bash(mkdir -p ' + absTmp + '*)',
+      'Bash(mkdir -p \"' + absTmp + '\"*)',
       'Bash(mkdir -p ./.job-search/tmp*)',
       'Bash(mkdir -p .job-search/tmp*)',
+      'Bash(rm -rf ' + absTmp + '*)',
+      'Bash(rm -rf \"' + absTmp + '\"*)',
       'Bash(rm -rf ./.job-search/tmp*)',
       'Bash(rm -rf .job-search/tmp*)',
+      'Bash(rm -f ' + absTmp + '/*)',
+      'Bash(rm -f \"' + absTmp + '\"/*)',
+      'Bash(rm -f ' + absTmp + '*)',
+      'Bash(rm -f \"' + absTmp + '\"*)',
       'Bash(rm -f ./.job-search/tmp/*)',
       'Bash(rm -f .job-search/tmp/*)',
+      'Bash(tee ' + absTmp + '/*)',
+      'Bash(tee \"' + absTmp + '\"/*)',
+      'Bash(tee ./.job-search/tmp/*)',
+      'Bash(tee .job-search/tmp/*)',
+
+      // Scoped filesystem Read & Write (workspace and .job-search/)
+      'Read(' + projectDir + '/**)',
+      'Write(' + projectDir + '/**)',
+      'Read(' + absJobSearch + '/**)',
+      'Write(' + absJobSearch + '/**)',
+      'Read(./**)',
+      'Write(./**)',
       'Read(./.job-search/**)',
-      'Write(./.job-search/**)'
+      'Write(./.job-search/**)',
+      'Read(.job-search/**)',
+      'Write(.job-search/**)',
+
+      // MCP Database tools (wildcard and all specific tools)
+      'mcp__job-search-db__*',
+      'mcp__job-search-db__add_rubric_dimension',
+      'mcp__job-search-db__add_skill',
+      'mcp__job-search-db__add_title_pattern',
+      'mcp__job-search-db__add_to_queue',
+      'mcp__job-search-db__batch_score_candidates',
+      'mcp__job-search-db__check_url_exists',
+      'mcp__job-search-db__delete_rubric_dimension',
+      'mcp__job-search-db__get_batch',
+      'mcp__job-search-db__get_candidate',
+      'mcp__job-search-db__get_pending_queue',
+      'mcp__job-search-db__get_pipeline_stats',
+      'mcp__job-search-db__get_run_logs',
+      'mcp__job-search-db__get_scoring_rubric',
+      'mcp__job-search-db__get_skill_rubric',
+      'mcp__job-search-db__list_candidates',
+      'mcp__job-search-db__list_companies',
+      'mcp__job-search-db__list_skills',
+      'mcp__job-search-db__list_title_patterns',
+      'mcp__job-search-db__log_run',
+      'mcp__job-search-db__record_assessment',
+      'mcp__job-search-db__set_skill_weight',
+      'mcp__job-search-db__update_company_crawl_status',
+      'mcp__job-search-db__update_queue_status',
+      'mcp__job-search-db__update_rubric_dimension',
+      'mcp__job-search-db__upsert_company',
+
+      // Web discovery and fetch fallback tools
+      'WebSearch',
+      'WebFetch',
+      'WebFetch(*)'
     ];
     for (const g of grants) {
       if (!cfg.permissions.allow.includes(g)) cfg.permissions.allow.push(g);
@@ -832,7 +897,12 @@ if [ -n "$LAUNCH_FILE" ] && [ -f "$LAUNCH_FILE" ]; then
   echo -e "  Launch Config:     ${BOLD}$LAUNCH_FILE${RESET}"
 fi
 if [ -n "$SETTINGS_FILE" ] && [ -f "$SETTINGS_FILE" ]; then
-  echo -e "  Permissions:       ${BOLD}$SETTINGS_FILE${RESET} (pre-granted crawler exec + .job-search/ read-write, so scheduled runs won't prompt)"
+  echo -e "  Permissions:       ${BOLD}$SETTINGS_FILE${RESET}"
+  echo -e "                     ${GREEN}✓${RESET} Scoped Read/Write: ${CYAN}$PROJECT_DIR/**${RESET} & ${CYAN}.job-search/**${RESET}"
+  echo -e "                     ${GREEN}✓${RESET} Crawler Script:    ${CYAN}node .claude/plugins/job-search-automation/scripts/crawl-job-board.js:*${RESET}"
+  echo -e "                     ${GREEN}✓${RESET} Ephemeral Temp:    ${CYAN}.job-search/tmp/*${RESET} (mkdir, rm, tee)"
+  echo -e "                     ${GREEN}✓${RESET} MCP Database:      ${CYAN}mcp__job-search-db__*${RESET} (all tools pre-approved)"
+  echo -e "                     ${GREEN}✓${RESET} Web Access:        ${CYAN}WebSearch${RESET}, ${CYAN}WebFetch${RESET} (fallback discovery)"
 fi
 echo ""
 echo -e "To update your resume in the future, run:"

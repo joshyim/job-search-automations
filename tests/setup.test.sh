@@ -275,6 +275,28 @@ assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf .job-search/tmp*)" ".claude/set
 assert_contains "$SETTINGS_CONTENT" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json contains rm -f ./.job-search/tmp/* permission (PRO-32)"
 assert_contains "$SETTINGS_CONTENT" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json contains rm -f .job-search/tmp/* permission (PRO-32)"
 
+# PRO-34 permissions assertions
+assert_contains "$SETTINGS_CONTENT" "scripts/crawl-job-board.js:*" ".claude/settings.json contains crawler execution grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "Bash(mkdir -p $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp mkdir grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp rm grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "Read($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Read grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "Write($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Write grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "Read($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Read grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "Write($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Write grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__*" ".claude/settings.json contains mcp wildcard grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__get_pending_queue" ".claude/settings.json contains mcp queue grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__list_companies" ".claude/settings.json contains mcp companies grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "WebSearch" ".claude/settings.json contains WebSearch grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "WebFetch" ".claude/settings.json contains WebFetch grant (PRO-34)"
+
+# PRO-34 post-install transparent permissions summary assertions
+assert_contains "$SETUP_DIR_OUT" "Permissions:" "setup.sh outputs Permissions in summary (PRO-34)"
+assert_contains "$SETUP_DIR_OUT" "Scoped Read/Write:" "setup.sh details Scoped Read/Write grant in summary (PRO-34)"
+assert_contains "$SETUP_DIR_OUT" "Crawler Script:" "setup.sh details Crawler Script grant in summary (PRO-34)"
+assert_contains "$SETUP_DIR_OUT" "Ephemeral Temp:" "setup.sh details Ephemeral Temp grant in summary (PRO-34)"
+assert_contains "$SETUP_DIR_OUT" "MCP Database:" "setup.sh details MCP Database grant in summary (PRO-34)"
+assert_contains "$SETUP_DIR_OUT" "Web Access:" "setup.sh details Web Access grant in summary (PRO-34)"
+
 # Verify relative path configuration
 CFG_DB_PATH="$(grep '"databasePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"databasePath":[[:space:]]*"([^"]+)".*/\1/')"
 CFG_RES_PATH="$(grep '"resumePath"' "$PROJECT_DIR/.job-search/config.json" | sed -E 's/.*"resumePath":[[:space:]]*"([^"]+)".*/\1/')"
