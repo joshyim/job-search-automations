@@ -322,6 +322,36 @@ else
   fail "CLAUDE.md: Missing Scheduled & Unattended Execution Guidelines section"
 fi
 
+# --- 10. Verifying Candidate Status Ownership & Disposition Guardrails (PRO-38) ---
+echo -e "\n--- 10. Verifying Candidate Status Ownership & Disposition Guardrails (PRO-38) ---"
+
+# job-search-assess: forbids auto-disposition and designates disposition as user decision
+if grep -qi "Candidate disposition is strictly a user decision" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Explicitly designates candidate disposition as a user decision"
+else
+  fail "job-search-assess: Missing candidate disposition user decision rule"
+fi
+
+if grep -qiE 'Never set (`status`|status) to anything other than' "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Forbids setting status to anything other than new"
+else
+  fail "job-search-assess: Missing rule forbidding status other than new"
+fi
+
+# job-search-lead-gen: clarifies candidate status ownership
+if grep -qi "Candidate disposition is strictly a user decision" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Reinforces candidate disposition as user decision"
+else
+  fail "job-search-lead-gen: Missing candidate disposition rule"
+fi
+
+# CLAUDE.md: documents candidate status ownership
+if grep -qi "Candidate Status Ownership & Human-in-the-Loop Disposition" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents Candidate Status Ownership & Human-in-the-Loop Disposition"
+else
+  fail "CLAUDE.md: Missing Candidate Status Ownership rule in CLAUDE.md"
+fi
+
 echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"

@@ -48,7 +48,7 @@ The crawl skill uses `scripts/crawl-job-board.js`, matches postings against titl
 
 **Phase B - Assess:**
 Read and follow `skills/job-search-assess/SKILL.md` for this company. Pass the company name and workspace directory.
-The assess skill retrieves pending roles via `get_pending_queue`, dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<selected-directory>/.job-search/resume.pdf`, records qualified roles via `add_candidate`, and updates status via `update_queue_status`.
+The assess skill retrieves pending roles via `get_pending_queue`, dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<selected-directory>/.job-search/resume.pdf`, records scored roles via `add_candidate` with `status: "new"` (disposition is reserved for the user), and updates queue status via `update_queue_status`.
 
 **Phase C - Log and clean up:**
 Record the run outcome for this company using MCP tool `log_run`:
@@ -113,4 +113,5 @@ Output the execution summary to the user:
 - Record every company run outcome using `log_run`.
 - Do not perform direct file I/O for pipeline state. All data operations MUST go through MCP tools (`get_batch`, `log_run`, `get_candidates`).
 - All temporary files (JSON extracts, helper scripts) MUST be written inside `<selected-directory>/.job-search/tmp/` (as flat files e.g. `<company-slug>-crawl.json`) and cleaned up in Phase C. Never create nested subdirectories.
+- **Candidate disposition is strictly a user decision**: Candidates are always recorded in `status: "new"`. Never auto-disposition candidates (such as setting `not_pursuing` or `rejected`) based on score thresholds or subjective evaluation; disposition is strictly reserved for the human user.
 - **Budget and unattended execution:** Aim to complete batch runs within 40–50 messages. Maintain bounded batch sizes (`limit: 3` via `get_batch`), avoid open-ended exploration, and never use interactive browser automation (`Claude_Browser`) during unattended runs.

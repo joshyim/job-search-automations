@@ -112,6 +112,7 @@ Prompt evaluation criteria:
     "notes": "<role_synopsis>"
   }
   ```
+  - **Important**: Always record new candidates with `"status": "new"`. Never auto-disposition or set `status` to `not_pursuing`, `rejected`, `closed`, or any other status based on low scores or rubric thresholds. Candidate disposition is strictly reserved for human review.
 - Update queue status via MCP tool `update_queue_status`:
   ```json
   {
@@ -139,6 +140,7 @@ Each MCP call commits a durable checkpoint.
 ## Rules
 
 - Write one candidate at a time through `add_candidate`. Each write is durable.
+- **Candidate disposition is strictly a user decision**: Never set `status` to anything other than `"new"` when recording a new candidate. Do not auto-dispose or assign `not_pursuing`, `rejected`, or `closed` based on score thresholds, low match scores, or agent judgment. All scored candidates must be recorded with `status: "new"` for human review.
 - Do not perform direct file I/O on markdown tables. All queue and candidate updates must go through MCP tools.
 - Do not apply to any roles. Assessment and scoring only.
 - Clean up any ephemeral files in `<selected-directory>/.job-search/tmp/` upon completion.

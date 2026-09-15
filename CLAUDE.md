@@ -106,6 +106,10 @@ In a user's project workspace after installation, the source repo and git histor
      - Assess: Process at most 5 pending postings per scheduled run (via `get_pending_queue`).
    - **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple `WebFetch`.
    - **Fast-Fail URLs**: If an ATS board is unreachable or a posting URL redirects/404s, immediately mark it skipped via `update_queue_status` and move to the next item. Never enter retry loops.
+9. **Candidate Status Ownership & Human-in-the-Loop Disposition**:
+   - Automated assessment and crawler agents must **never** unilaterally set candidate status to `not_pursuing`, `closed`, `rejected`, `applied`, or any other disposition status.
+   - When recording candidates via `add_candidate`, always record with `status: "new"`.
+   - Low rubric scores, qualification doubts, or perceived misfit do **not** justify auto-disposition. The scoring agent's role is strictly to score and evaluate against the rubric; disposition decisions belong exclusively to the human user.
 
 ## Launching the Web UI Dashboard
 

@@ -16,7 +16,7 @@ export function registerCandidateTools(server: McpServer, workspaceManager: Work
       location: z.string().optional().describe('Job location (e.g. Remote, San Francisco, CA)'),
       score: z.number().optional().describe('Overall match score (0-10 or 0-100)'),
       breakdown: z.record(z.number()).optional().describe('Score breakdown by rubric dimension'),
-      status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new")'),
+      status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new"). Note: Assessment agents must only set "new"; other statuses are reserved for human user disposition.'),
       notes: z.string().optional().describe('Notes, key strengths, or interview highlights'),
     },
     async ({ selected_directory, directory, company_name, job_title, url, location, score, breakdown, status, notes }) => {
@@ -46,7 +46,7 @@ export function registerCandidateTools(server: McpServer, workspaceManager: Work
 
   server.tool(
     'update_candidate_status',
-    'Update the status of a candidate job posting (new, applied, in_progress, not_pursuing)',
+    'Update the status of a candidate job posting (new, applied, in_progress, not_pursuing, closed, interviewing, rejected, offer). Reserved for human user disposition or explicit user instruction.',
     {
       selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
       directory: z.string().optional().describe('Alias for selected_directory'),
