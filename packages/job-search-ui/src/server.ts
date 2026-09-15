@@ -93,8 +93,44 @@ class JobSearchUIServer {
     }
 
     const args = [DB_SERVER_PATH];
-    const targetDir = this.options.directory || process.env.JOB_SEARCH_WORKSPACE || (fs.existsSync(path.join(process.cwd(), '.job-search', 'config.json')) ? process.cwd() : undefined);
+
+    const isWorkspace = (dir?: string): boolean => {
+      if (!dir) return false;
+      return (
+        fs.existsSync(path.join(dir, '.job-search', 'config.json')) ||
+        fs.existsSync(path.join(dir, '.job-search', 'job-search.sqlite'))
+      );
+    };
+
+    const detectWorkspace = (): string | undefined => {
+      const baseCwd = process.env.INIT_CWD || process.cwd();
+      // 1. Check INIT_CWD if launched via npm
+      if (process.env.INIT_CWD && isWorkspace(process.env.INIT_CWD)) {
+        return path.resolve(process.env.INIT_CWD);
+      }
+      // 2. Check process.cwd()
+      if (isWorkspace(process.cwd())) {
+        return path.resolve(process.cwd());
+      }
+      // 3. Walk up ancestors from caller's working directory
+      let curr = path.resolve(baseCwd);
+      while (curr !== path.dirname(curr)) {
+        if (isWorkspace(curr)) return curr;
+        curr = path.dirname(curr);
+      }
+      return undefined;
+    };
+
+    const targetDir = this.options.directory || process.env.JOB_SEARCH_WORKSPACE || detectWorkspace();
     const activeCfg = this.options.configPath || process.env.JOB_SEARCH_CONFIG_PATH;
+
+    if (!targetDir && !activeCfg) {
+      console.warn(
+        '[UI Server] ⚠️ WARNING: No workspace directory provided or detected. ' +
+        'MCP database queries may fail with "No workspace directory provided". ' +
+        'Pass --directory <path> or set JOB_SEARCH_WORKSPACE.'
+      );
+    }
 
     if (targetDir) {
       args.push('--directory', path.resolve(targetDir));
@@ -138,6 +174,17 @@ class JobSearchUIServer {
       name,
       arguments: args,
     });
+
+    if (response.isError) {
+      let errorMessage = 'MCP tool call resulted in an error';
+      if (response.content && Array.isArray(response.content) && response.content.length > 0) {
+        const first = response.content[0];
+        if (first.type === 'text' && typeof first.text === 'string') {
+          errorMessage = first.text;
+        }
+      }
+      throw new Error(errorMessage);
+    }
 
     // Parse text content from response
     if (response.content && Array.isArray(response.content) && response.content.length > 0) {

@@ -867,7 +867,7 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
     cfg.configurations.push({
       name: 'job-search-ui',
       runtimeExecutable: 'npm',
-      runtimeArgs: ['run', 'start', '--prefix', uiRel],
+      runtimeArgs: ['run', 'start', '--prefix', uiRel, '--', '--directory', '.'],
       port: 3847
     });
     fs.writeFileSync(launchFile, JSON.stringify(cfg, null, 2) + '\n');

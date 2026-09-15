@@ -292,7 +292,7 @@ async function handleSetup(args) {
   launchConfig.configurations.push({
     name: 'job-search-ui',
     runtimeExecutable: 'npm',
-    runtimeArgs: ['run', 'start', '--prefix', relativeUiPkg],
+    runtimeArgs: ['run', 'start', '--prefix', relativeUiPkg, '--', '--directory', '.'],
     port: 3847,
   });
   fs.writeFileSync(launchFilePath, JSON.stringify(launchConfig, null, 2) + '\n');

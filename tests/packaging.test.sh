@@ -1110,6 +1110,91 @@ setTimeout(() => {
 pass "Claude Code integration validates and launches root .mcp.json"
 rm -f "$CLAUDE_CODE_STDOUT" "$CLAUDE_CODE_STDERR"
 
+# ------------------------------------------------------------------------------
+# Story 11: UI Dashboard Workspace Auto-Detection & MCP Error Surfacing (PRO-36)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 11] UI Dashboard Workspace Auto-Detection & MCP Error Surfacing (PRO-36)${RESET}"
+
+MOCK_PROJ="$PLUGIN_ROOT/tests/fixtures/mock_pro36_proj_$$"
+mkdir -p "$MOCK_PROJ/.job-search"
+cat << 'EOF' > "$MOCK_PROJ/.job-search/config.json"
+{
+  "mode": "local",
+  "storage": {
+    "databasePath": "./job-search.sqlite"
+  }
+}
+EOF
+touch "$MOCK_PROJ/.job-search/job-search.sqlite"
+
+# Test 1: Auto-detection when launched via INIT_CWD without --directory
+AUTODETECT_LOG="$PLUGIN_ROOT/tests/fixtures/autodetect_$$.log"
+(
+  cd "$PLUGIN_ROOT/packages/job-search-ui"
+  INIT_CWD="$MOCK_PROJ" node "$START_JS" --port 3992 > "$AUTODETECT_LOG" 2>&1 &
+  echo $! > "$AUTODETECT_LOG.pid"
+)
+AUTO_PID=$(cat "$AUTODETECT_LOG.pid")
+
+for _ in {1..30}; do
+  if grep -Fq "Job Search Web UI running" "$AUTODETECT_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+if grep -Fq -- "--directory $MOCK_PROJ" "$AUTODETECT_LOG" 2>/dev/null; then
+  pass "UI server auto-detected workspace from INIT_CWD and forwarded --directory"
+else
+  fail "UI server failed to auto-detect workspace directory from INIT_CWD. Log: $(cat "$AUTODETECT_LOG" 2>/dev/null)"
+fi
+
+kill -TERM "$AUTO_PID" 2>/dev/null || true
+wait "$AUTO_PID" 2>/dev/null || true
+rm -f "$AUTODETECT_LOG" "$AUTODETECT_LOG.pid"
+
+# Test 2: Warning output and MCP error propagation when no workspace detected
+NO_WS_DIR="$PLUGIN_ROOT/tests/fixtures/mock_no_ws_$$"
+mkdir -p "$NO_WS_DIR"
+NOWS_LOG="$PLUGIN_ROOT/tests/fixtures/nows_$$.log"
+(
+  cd "$NO_WS_DIR"
+  INIT_CWD="" node "$START_JS" --port 3993 > "$NOWS_LOG" 2>&1 &
+  echo $! > "$NOWS_LOG.pid"
+)
+NOWS_PID=$(cat "$NOWS_LOG.pid")
+
+for _ in {1..30}; do
+  if grep -Fq "Job Search Web UI running" "$NOWS_LOG" 2>/dev/null; then
+    break
+  fi
+  sleep 0.5
+done
+
+if grep -Fq "WARNING: No workspace directory provided or detected" "$NOWS_LOG" 2>/dev/null; then
+  pass "UI server emitted warning when no workspace directory could be resolved"
+else
+  fail "UI server did not emit warning when no workspace was detected. Log: $(cat "$NOWS_LOG" 2>/dev/null)"
+fi
+
+# Query /api/mcp/call-tool and ensure it returns HTTP 500 with success: false
+CALL_RES=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://127.0.0.1:3993/api/mcp/call-tool \
+  -H "Content-Type: application/json" \
+  -d '{"name": "list_companies", "arguments": {}}' 2>/dev/null || true)
+
+HTTP_CODE=$(echo "$CALL_RES" | grep "HTTP_STATUS:" | cut -d':' -f2)
+BODY=$(echo "$CALL_RES" | grep -v "HTTP_STATUS:")
+
+if [ "$HTTP_CODE" = "500" ] && [[ "$BODY" =~ \"success\":false ]] && [[ "$BODY" =~ "No workspace directory provided" ]]; then
+  pass "/api/mcp/call-tool propagates MCP tool errors as HTTP 500 with success: false"
+else
+  fail "Expected HTTP 500 with success: false and error message. Got code $HTTP_CODE: $BODY"
+fi
+
+kill -TERM "$NOWS_PID" 2>/dev/null || true
+wait "$NOWS_PID" 2>/dev/null || true
+rm -f "$NOWS_LOG" "$NOWS_LOG.pid"
+rm -rf "$MOCK_PROJ" "$NO_WS_DIR"
 
 # ------------------------------------------------------------------------------
 # Summary

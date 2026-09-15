@@ -51,8 +51,71 @@ if (!isUiBuilt || !isDbBuilt) {
   }
 }
 
-// Spawn dist/server.js forwarding all passed arguments
+// Auto-detect workspace directory or normalize provided paths before spawning server.
+// When launched via `npm run start --prefix <ui-pkg>`, process.cwd() or INIT_CWD is the
+// project root but the child server will run with cwd=UI_DIR.
 const args = process.argv.slice(2);
+
+let hasDirectoryArg = false;
+let hasConfigArg = false;
+const baseCwd = process.env.INIT_CWD || process.cwd();
+
+for (let i = 0; i < args.length; i++) {
+  if ((args[i] === '--directory' || args[i] === '-d') && args[i + 1]) {
+    hasDirectoryArg = true;
+    args[i + 1] = path.resolve(baseCwd, args[i + 1]);
+    i++;
+  } else if (args[i].startsWith('--directory=')) {
+    hasDirectoryArg = true;
+    const val = args[i].slice('--directory='.length);
+    args[i] = `--directory=${path.resolve(baseCwd, val)}`;
+  } else if (args[i] === '--config' && args[i + 1]) {
+    hasConfigArg = true;
+    args[i + 1] = path.resolve(baseCwd, args[i + 1]);
+    i++;
+  } else if (args[i].startsWith('--config=')) {
+    hasConfigArg = true;
+    const val = args[i].slice('--config='.length);
+    args[i] = `--config=${path.resolve(baseCwd, val)}`;
+  }
+}
+
+if (!hasDirectoryArg && !hasConfigArg && !process.env.JOB_SEARCH_WORKSPACE && !process.env.JOB_SEARCH_CONFIG_PATH) {
+  const isWorkspace = (dir) => {
+    if (!dir || typeof dir !== 'string') return false;
+    return (
+      fs.existsSync(path.join(dir, '.job-search', 'config.json')) ||
+      fs.existsSync(path.join(dir, '.job-search', 'job-search.sqlite'))
+    );
+  };
+
+  const findWorkspaceDir = () => {
+    // 1. Check INIT_CWD if launched via npm from project directory
+    if (process.env.INIT_CWD && isWorkspace(process.env.INIT_CWD)) {
+      return path.resolve(process.env.INIT_CWD);
+    }
+
+    // 2. Check process.cwd()
+    if (isWorkspace(process.cwd())) {
+      return path.resolve(process.cwd());
+    }
+
+    // 3. Walk up ancestors from caller's working directory
+    let curr = path.resolve(baseCwd);
+    while (curr !== path.dirname(curr)) {
+      if (isWorkspace(curr)) return curr;
+      curr = path.dirname(curr);
+    }
+
+    return null;
+  };
+
+  const candidate = findWorkspaceDir();
+  if (candidate) {
+    args.push('--directory', candidate);
+  }
+}
+
 const child = spawn(process.execPath, [UI_DIST_SERVER, ...args], {
   cwd: UI_DIR,
   stdio: 'inherit',

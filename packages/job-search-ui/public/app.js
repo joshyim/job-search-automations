@@ -31,10 +31,25 @@
         body: JSON.stringify({ name, arguments: args }),
       });
 
-      const json = await response.json();
+      let json;
+      try {
+        json = await response.json();
+      } catch (e) {
+        throw new Error(`HTTP ${response.status}: Failed to parse server response`);
+      }
+
       if (!response.ok || !json.success) {
         throw new Error(json.error || `HTTP ${response.status}`);
       }
+
+      // Check if data is an unhandled raw error string
+      if (typeof json.data === 'string' && (
+        json.data.startsWith('No workspace directory provided') ||
+        json.data.startsWith('Error:')
+      )) {
+        throw new Error(json.data);
+      }
+
       return json.data;
     } catch (err) {
       showToast(`MCP Tool Error (${name}): ${err.message}`, 'error');
@@ -204,6 +219,7 @@
       document.getElementById('stat-companies-desc').textContent = `${active} active target companies`;
     } catch (e) {
       document.getElementById('stat-companies').textContent = '-';
+      document.getElementById('stat-companies-desc').textContent = 'Error loading companies';
     }
 
     // 2. Queue Pending
@@ -211,8 +227,10 @@
       const pendingQueue = await callMcp('list_queue', { status: 'pending' });
       const count = Array.isArray(pendingQueue) ? pendingQueue.length : 0;
       document.getElementById('stat-queue').textContent = count;
+      document.getElementById('stat-queue-desc').textContent = 'Awaiting crawler assessment';
     } catch (e) {
       document.getElementById('stat-queue').textContent = '-';
+      document.getElementById('stat-queue-desc').textContent = 'Error loading queue';
     }
 
     // 3. New Candidates
@@ -220,8 +238,10 @@
       const candidates = await callMcp('get_candidates', { status: 'new' });
       const count = Array.isArray(candidates) ? candidates.length : 0;
       document.getElementById('stat-candidates').textContent = count;
+      document.getElementById('stat-candidates-desc').textContent = 'Ready for application review';
     } catch (e) {
       document.getElementById('stat-candidates').textContent = '-';
+      document.getElementById('stat-candidates-desc').textContent = 'Error loading candidates';
     }
 
     // 4. Last Run
@@ -242,6 +262,7 @@
       }
     } catch (e) {
       document.getElementById('stat-last-run').textContent = '-';
+      document.getElementById('stat-last-run-desc').textContent = 'Error loading run history';
     }
 
     // Load top matched jobs on dashboard
