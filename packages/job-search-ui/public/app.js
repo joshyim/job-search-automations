@@ -132,7 +132,7 @@
       skills: ['Target Skills', 'Manage required and preferred skills with priority designations.'],
       rubric: ['Scoring Rubric', 'Customize dimension weights and tier descriptors. Total weight must sum to 100%.'],
       visualization: ['Workflow Visualization', 'Interactive conceptual system architecture and sub-process loops.'],
-      queue: ['Crawl Queue', 'Inspect queued URLs, status transitions (pending, assessed, skipped).'],
+      queue: ['Planned Actions', 'Inspect queued URLs, status transitions (pending, assessed, skipped).'],
       'matched-jobs': ['Matched Jobs', 'Review scored job opportunities, assess rubric fit, and update application status.'],
       candidates: ['Matched Jobs', 'Review scored job opportunities, assess rubric fit, and update application status.'],
       history: ['Run History', 'Timeline of past automated search executions and audit logs.'],

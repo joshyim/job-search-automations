@@ -1197,6 +1197,80 @@ rm -f "$NOWS_LOG" "$NOWS_LOG.pid"
 rm -rf "$MOCK_PROJ" "$NO_WS_DIR"
 
 # ------------------------------------------------------------------------------
+# Story 12: Web UI Navigation Reorganization (PRO-35)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Story 12] Web UI Navigation Reorganization (PRO-35)${RESET}"
+
+UI_INDEX="$PLUGIN_ROOT/packages/job-search-ui/public/index.html"
+UI_APP="$PLUGIN_ROOT/packages/job-search-ui/public/app.js"
+
+# 1. Verify Review & Act section exists and contains Matched Jobs
+if grep -Fq '<div class="nav-section-title">Review & Act</div>' "$UI_INDEX"; then
+  pass "Sidebar contains 'Review & Act' section header"
+else
+  fail "Sidebar is missing 'Review & Act' section header"
+fi
+
+if node -e '
+  const fs = require("fs");
+  const html = fs.readFileSync(process.argv[1], "utf8");
+  const reviewActIdx = html.indexOf("Review & Act");
+  const configIdx = html.indexOf("Configuration");
+  const matchedJobsIdx = html.indexOf("id=\"nav-matched-jobs\"");
+  if (matchedJobsIdx > reviewActIdx && matchedJobsIdx < configIdx) {
+    process.exit(0);
+  }
+  process.exit(1);
+' "$UI_INDEX"; then
+  pass "Matched Jobs nav item is located under 'Review & Act' (before 'Configuration')"
+else
+  fail "Matched Jobs nav item is not positioned between 'Review & Act' and 'Configuration'"
+fi
+
+# 2. Verify Activity section exists and contains Planned Actions and Run History
+if grep -Fq '<div class="nav-section-title">Activity</div>' "$UI_INDEX"; then
+  pass "Sidebar contains 'Activity' section header"
+else
+  fail "Sidebar is missing 'Activity' section header"
+fi
+
+if node -e '
+  const fs = require("fs");
+  const html = fs.readFileSync(process.argv[1], "utf8");
+  const activityIdx = html.indexOf("<div class=\"nav-section-title\">Activity</div>");
+  const queueIdx = html.indexOf("id=\"nav-queue\"");
+  const historyIdx = html.indexOf("id=\"nav-history\"");
+  if (activityIdx !== -1 && queueIdx > activityIdx && historyIdx > activityIdx) {
+    process.exit(0);
+  }
+  process.exit(1);
+' "$UI_INDEX"; then
+  pass "Planned Actions and Run History are located under 'Activity' section"
+else
+  fail "Planned Actions and Run History are not positioned under 'Activity' section"
+fi
+
+# 3. Verify Planned Actions nav item and stat card
+if grep -Fq '<span>Planned Actions</span>' "$UI_INDEX"; then
+  pass "Sidebar nav contains 'Planned Actions' label"
+else
+  fail "Sidebar nav is missing 'Planned Actions' label"
+fi
+
+if grep -Fq '<span class="stat-title">Planned Actions</span>' "$UI_INDEX"; then
+  pass "Dashboard stat card displays 'Planned Actions'"
+else
+  fail "Dashboard stat card is missing 'Planned Actions' title"
+fi
+
+# 4. Verify app.js updates route title for Planned Actions
+if grep -Fq "queue: ['Planned Actions'" "$UI_APP"; then
+  pass "app.js routes queue view title to 'Planned Actions'"
+else
+  fail "app.js does not route queue view title to 'Planned Actions'"
+fi
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo -e "\n${CYAN}==============================================================${RESET}"
