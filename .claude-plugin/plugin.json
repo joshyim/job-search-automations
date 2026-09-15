@@ -7,5 +7,6 @@
     "email": "josh@joshyim.com",
     "url": "https://www.joshyim.com"
   },
+  "license": "MIT",
   "repository": "https://github.com/joshyim/job-search-automations"
 }
