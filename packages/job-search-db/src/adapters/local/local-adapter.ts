@@ -236,7 +236,16 @@ export class LocalAdapter implements DataAdapter {
       if (!b.last_searched_at) return 1;
       return new Date(a.last_searched_at).getTime() - new Date(b.last_searched_at).getTime();
     });
-    return all.slice(0, limit);
+    const batch = all.slice(0, limit);
+    // Stamp last_searched_at now, atomically with selection, so a batch is never
+    // re-selected on the next call regardless of whether the caller remembers to
+    // report back on how processing went.
+    const now = new Date().toISOString();
+    for (const company of batch) {
+      await this.updateCompany(company.name, { last_searched_at: now });
+      company.last_searched_at = now;
+    }
+    return batch;
   }
 
   // --- Title Patterns & Skills ---

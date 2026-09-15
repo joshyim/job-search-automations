@@ -203,6 +203,19 @@ export class SqliteAdapter implements DataAdapter {
     `;
 
     const rows = db.prepare(query).all(limit) as any[];
+    // Stamp last_searched_at now, atomically with selection, so a batch is never
+    // re-selected on the next call regardless of whether the caller remembers to
+    // report back on how processing went. Callers that later learn more (e.g. a
+    // failure reason) can still call updateCompany to add notes.
+    if (rows.length > 0) {
+      const now = new Date().toISOString();
+      const stamp = db.prepare('UPDATE companies SET last_searched_at = ?, updated_at = ? WHERE id = ?');
+      for (const row of rows) {
+        stamp.run(now, now, row.id);
+        row.last_searched_at = now;
+        row.updated_at = now;
+      }
+    }
     return rows.map((r) => ({
       ...r,
       is_excluded: Boolean(r.is_excluded),

@@ -66,17 +66,24 @@ describe('LocalAdapter', () => {
       expect(allCompanies[0].notes).toContain('Hiring freeze');
     });
 
-    it('getBatch prioritizes unsearched and oldest searched non-excluded companies', async () => {
+    it('getBatch prioritizes unsearched and oldest searched non-excluded companies and advances rotation', async () => {
       await adapter.addCompany({ name: 'Alpha', careers_url: 'https://alpha.com', last_searched_at: '2026-09-06T10:00:00Z' });
       await adapter.addCompany({ name: 'Beta', careers_url: 'https://beta.com' }); // Unsearched
+      await adapter.addCompany({ name: 'Delta', careers_url: 'https://delta.com' }); // Unsearched
       await adapter.addCompany({ name: 'Gamma', careers_url: 'https://gamma.com' });
       await adapter.excludeCompany('Gamma', 'Excluded test');
 
       const batch = await adapter.getBatch(2);
       expect(batch).toHaveLength(2);
-      expect(batch[0].name).toBe('Beta'); // Unsearched first
-      expect(batch[1].name).toBe('Alpha');
       expect(batch.map(c => c.name)).not.toContain('Gamma'); // Excluded omitted
+      expect(batch.map(c => c.name)).not.toContain('Alpha'); // Unsearched Beta and Delta prioritized over Alpha
+      expect(batch[0].last_searched_at).toBeTruthy();
+      expect(batch[1].last_searched_at).toBeTruthy();
+
+      // Next call rotates to Alpha because Beta and Delta were stamped with now
+      const nextBatch = await adapter.getBatch(1);
+      expect(nextBatch).toHaveLength(1);
+      expect(nextBatch[0].name).toBe('Alpha');
     });
 
     it('updates company details including toggling excluded status', async () => {

@@ -93,6 +93,13 @@ describe('SqliteAdapter', () => {
       // Beta is excluded, so Delta (unsearched) and Gamma (oldest) should be prioritized over Alpha
       expect(batch[0].name).toBe('Delta');
       expect(batch[1].name).toBe('Gamma');
+      expect(batch[0].last_searched_at).toBeTruthy();
+      expect(batch[1].last_searched_at).toBeTruthy();
+
+      // Next call rotates past Delta and Gamma because their last_searched_at was stamped
+      const nextBatch = await adapter.getBatch(2);
+      expect(nextBatch).toHaveLength(2);
+      expect(nextBatch[0].name).toBe('Alpha');
     });
   });
 

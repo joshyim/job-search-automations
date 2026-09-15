@@ -218,6 +218,18 @@ export class NeonAdapter implements DataAdapter {
       LIMIT $1
     `;
     const result = await this.pool.query(query, [limit]);
+    // Stamp last_searched_at now, atomically with selection, so a batch is never
+    // re-selected on the next call regardless of whether the caller remembers to
+    // report back on how processing went.
+    if (result.rows.length > 0) {
+      const now = new Date().toISOString();
+      const ids = result.rows.map((r: any) => r.id);
+      await this.pool.query('UPDATE companies SET last_searched_at = $1, updated_at = $1 WHERE id = ANY($2::int[])', [now, ids]);
+      for (const r of result.rows) {
+        r.last_searched_at = now;
+        r.updated_at = now;
+      }
+    }
     return result.rows.map(r => ({
       id: r.id,
       name: r.name,

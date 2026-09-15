@@ -91,22 +91,24 @@ describe('NeonAdapter', () => {
       );
     });
 
-    it('executes getBatch ordered by last_searched_at ASC NULLS FIRST', async () => {
+    it('executes getBatch ordered by last_searched_at ASC NULLS FIRST and stamps last_searched_at', async () => {
       const mockPool = createMockPool();
-      mockPool.query.mockResolvedValueOnce({
-        rows: [
-          {
-            id: 1,
-            name: 'OldestCompany',
-            careers_url: 'https://oldest.com',
-            is_excluded: false,
-            notes: null,
-            last_searched_at: null,
-            created_at: '2026-09-06T00:00:00Z',
-            updated_at: '2026-09-06T00:00:00Z',
-          },
-        ],
-      });
+      mockPool.query
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 1,
+              name: 'OldestCompany',
+              careers_url: 'https://oldest.com',
+              is_excluded: false,
+              notes: null,
+              last_searched_at: null,
+              created_at: '2026-09-06T00:00:00Z',
+              updated_at: '2026-09-06T00:00:00Z',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] });
 
       const adapter = new NeonAdapter({
         connectionString: 'postgres://mock/db',
@@ -119,6 +121,11 @@ describe('NeonAdapter', () => {
         expect.stringContaining('ORDER BY last_searched_at ASC NULLS FIRST'),
         [5]
       );
+      expect(mockPool.query).toHaveBeenCalledWith(
+        'UPDATE companies SET last_searched_at = $1, updated_at = $1 WHERE id = ANY($2::int[])',
+        [expect.any(String), [1]]
+      );
+      expect(batch[0].last_searched_at).toBeTruthy();
     });
   });
 
