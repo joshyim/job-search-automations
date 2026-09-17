@@ -132,8 +132,8 @@ The pipeline is organized into four distinct operational stages:
 
 | Routine # | Routine Name | Target Skill | Recommended Cadence | Unattended Limits |
 | :--- | :--- | :--- | :--- | :--- |
-| **1** | **Weekly Company Search** | `company-search` | Sunday 8:00 PM (`0 20 * * 0`) | Max 3–5 new qualified companies; budget 30–40 messages |
-| **2** | **Weekly Job Title Search** | `title-discovery` | Sunday 9:00 PM (`0 21 * * 0`) | Max 1–3 new patterns; budget 25–35 messages |
+| **1** | **Daily Company Search** | `company-search` | Daily 8:00 PM (`0 20 * * *`) | Max 3–5 new qualified companies; budget 30–40 messages |
+| **2** | **Daily Job Title Search** | `title-discovery` | Daily 9:00 PM (`0 21 * * *`) | Max 1–3 new patterns; budget 25–35 messages |
 | **3** | **Daily Job Crawl** | `job-search-crawl` / `job-search-lead-gen` | Daily 6:00 AM (`0 6 * * *`) | Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages |
 | **4** | **Daily Job Evaluation** | `job-search-assess` | Daily 7:00 AM (`0 7 * * *`) | Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages |
 
@@ -141,20 +141,20 @@ The pipeline is organized into four distinct operational stages:
 
 ### Routine Configuration & Prompts
 
-#### Routine 1: Weekly Company Search (`company-search`)
+#### Routine 1: Daily Company Search (`company-search`)
 Discovers new companies actively hiring for target roles across YC, BuiltIn, Wellfound, and LinkedIn, adding qualified targets via MCP.
-- **Cadence**: Every Sunday at 8:00 PM (`0 20 * * 0`)
+- **Cadence**: Daily at 8:00 PM (`0 20 * * *`)
 - **Prompt**:
   ```text
-  /schedule CronExpression="0 20 * * 0" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages. Never use browser automation."
+  /schedule CronExpression="0 20 * * *" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages. Never use browser automation."
   ```
 
-#### Routine 2: Weekly Job Title Search (`title-discovery`)
+#### Routine 2: Daily Job Title Search (`title-discovery`)
 Discovers emerging title patterns and function variants matching candidate skills and resume, adding validated include/exclude patterns via MCP.
-- **Cadence**: Every Sunday at 9:00 PM (`0 21 * * 0`)
+- **Cadence**: Daily at 9:00 PM (`0 21 * * *`)
 - **Prompt**:
   ```text
-  /schedule CronExpression="0 21 * * 0" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
+  /schedule CronExpression="0 21 * * *" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
   ```
 
 #### Routine 3: Daily Job Crawl (`job-search-crawl` / `job-search-lead-gen`)
@@ -182,8 +182,8 @@ Claude Code Routines run in the cloud on Anthropic infrastructure and can be rev
 ### Remediation for Existing Sessions
 If Claude Code previously auto-configured routines:
 1. **Delete "Weekly digest"**: Open `claude.ai/code/routines` or run `/schedule` in CLI and remove the non-existent weekly digest routine.
-2. **Add "Weekly Company Search"**: Create the Sunday 8:00 PM routine using the prompt in Section 4.
-3. **Add "Weekly Job Title Search"**: Create the Sunday 9:00 PM routine using the prompt in Section 4.
+2. **Add "Daily Company Search"**: Create the daily 8:00 PM routine using the prompt in Section 4.
+3. **Add "Daily Job Title Search"**: Create the daily 9:00 PM routine using the prompt in Section 4.
 4. **Verify Crawl & Evaluation**: Ensure the Daily Crawl (6:00 AM) and Daily Evaluation (7:00 AM) have explicit batch limits (3 companies, 5 postings) and message budgets (40–50 messages).
 
 ---

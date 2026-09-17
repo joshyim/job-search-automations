@@ -223,16 +223,16 @@ Automate your job search on a recurring schedule using your agent harness's sche
 > [!NOTE]
 > For complete routine configurations, prompt templates, and cloud routine management steps, see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md). Note: there is **no Weekly Digest routine** in this repository.
 
-### 1. Weekly Company Search Run (`company-search`)
-Discover new target companies hiring for candidate roles across YC, BuiltIn, Wellfound, and LinkedIn (Sunday 8:00 PM):
+### 1. Daily Company Search Run (`company-search`)
+Discover new target companies hiring for candidate roles across YC, BuiltIn, Wellfound, and LinkedIn (Daily 8:00 PM):
 ```text
-/schedule CronExpression="0 20 * * 0" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages."
+/schedule CronExpression="0 20 * * *" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages."
 ```
 
-### 2. Weekly Job Title Search Run (`title-discovery`)
-Discover emerging titles and keyword patterns matching candidate skills (Sunday 9:00 PM):
+### 2. Daily Job Title Search Run (`title-discovery`)
+Discover emerging titles and keyword patterns matching candidate skills (Daily 9:00 PM):
 ```text
-/schedule CronExpression="0 21 * * 0" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
+/schedule CronExpression="0 21 * * *" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
 ```
 
 ### 3. Daily Morning Crawl Run (`job-search-crawl` / `job-search-lead-gen`)

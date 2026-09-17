@@ -100,7 +100,7 @@ Output a clear summary:
 
 ## Unattended & Scheduled Execution Guidelines
 
-When executed as an automated routine or scheduled task (e.g., Weekly Company Search):
+When executed as an automated routine or scheduled task (e.g., Daily Company Search):
 - **Message Budget**: Complete within 30–40 messages. If more sources or candidate companies remain, stop and let the next scheduled run continue.
 - **Batch Limits**: Add at most 3–5 newly qualified companies via `add_company` per scheduled run to maintain pipeline focus.
 - **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP fetch and `WebSearch` / `WebFetch`.

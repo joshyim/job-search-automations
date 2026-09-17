@@ -146,11 +146,11 @@ The local Web UI dashboard provides a visual interface for reviewing scored cand
 
 When asked to configure routines or recurring background jobs, configure ONLY the four canonical routines below. See [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md) for full prompt templates, budgets, and cloud management steps.
 
-1. **Weekly Company Search** (`company-search`):
-   - Schedule: Sunday 8:00 PM (`0 20 * * 0`)
+1. **Daily Company Search** (`company-search`):
+   - Schedule: Daily 8:00 PM (`0 20 * * *`)
    - Bounds: Add at most 3–5 newly qualified companies; budget 30–40 messages.
-2. **Weekly Job Title Search** (`title-discovery`):
-   - Schedule: Sunday 9:00 PM (`0 21 * * 0`)
+2. **Daily Job Title Search** (`title-discovery`):
+   - Schedule: Daily 9:00 PM (`0 21 * * *`)
    - Bounds: Add at most 1–3 new validated patterns; budget 25–35 messages.
 3. **Daily Job Crawl** (`job-search-crawl` or `job-search-lead-gen`):
    - Schedule: Daily 6:00 AM (`0 6 * * *`)
