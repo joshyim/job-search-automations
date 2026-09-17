@@ -124,6 +124,11 @@ function ensurePackagesBuilt() {
 // Subcommand: setup
 // -----------------------------------------------------------------------------
 async function handleSetup(args) {
+  if (args.includes('-h') || args.includes('--help')) {
+    printHelp();
+    process.exit(0);
+  }
+
   let directory = '';
   let resumePath = '';
   let mode = 'local';
@@ -586,6 +591,11 @@ async function handleSetup(args) {
 // Subcommand: update-resume
 // -----------------------------------------------------------------------------
 async function handleUpdateResume(args) {
+  if (args.includes('-h') || args.includes('--help')) {
+    printHelp();
+    process.exit(0);
+  }
+
   let newResumePath = '';
   let directory = '';
   let configPath = '';
@@ -627,7 +637,7 @@ async function handleUpdateResume(args) {
 
   if (!fs.existsSync(cfgFile)) {
     console.error(`${RED}[ERROR] Plugin configuration not found at: ${cfgFile || '<unspecified>'}${RESET}`);
-    console.error(`Please run ${BOLD}job-search-automation setup --directory <dir> --resume <path>${RESET} first to initialize the workspace.`);
+    console.error(`Please run ${BOLD}npx -y github:joshyim/job-search-automations setup --directory <dir> --resume <path>${RESET} first to initialize the workspace.`);
     process.exit(1);
   }
 
@@ -658,6 +668,11 @@ async function handleUpdateResume(args) {
 // Subcommand: uninstall
 // -----------------------------------------------------------------------------
 async function handleUninstall(args) {
+  if (args.includes('-h') || args.includes('--help')) {
+    printHelp();
+    process.exit(0);
+  }
+
   let directory = '';
   let installTo = '';
   let purgeData = false;

@@ -76,7 +76,7 @@ export class WorkspaceManager {
       throw new Error(
         `Job search workspace not initialized at '${paths.projectDir}'.\n` +
         `Database not found at '${paths.sqliteFile}'.\n` +
-        `Please run './setup.sh --directory "${paths.projectDir}" --resume <path>' to initialize this workspace.`
+        `Please run 'npx -y github:joshyim/job-search-automations setup --directory "${paths.projectDir}" --resume <path>' to initialize this workspace.`
       );
     }
 

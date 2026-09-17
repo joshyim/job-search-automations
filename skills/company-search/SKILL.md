@@ -18,7 +18,7 @@ Before beginning:
    ```
    Error: Resume file not found at <selected-directory>/.job-search/resume.pdf.
    Please place your resume at this location or run:
-     ./setup.sh --directory "<selected-directory>" --update-resume /path/to/your/resume.pdf
+     npx -y github:joshyim/job-search-automations update-resume /path/to/your/resume.pdf --directory "<selected-directory>"
    ```
 
 ## Sources to Search

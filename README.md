@@ -22,7 +22,7 @@ job-search-automation/
 ├── plugin.json                 # Agent Plugins v1.0.0 manifest
 ├── mcp.json                    # MCP stdio server configuration
 ├── schema.sql                  # Canonical PostgreSQL DDL (Neon)
-├── setup.sh                    # Interactive & CLI setup orchestrator
+├── bin/cli.js                  # Zero-clone CLI orchestrator (setup, update-resume, uninstall)
 ├── README.md                   # Plugin documentation & quickstart
 ├── package.json                # Root automation scripts (npm run ui)
 ├── skills/                     # 6 specification-conformant agent skills
@@ -81,46 +81,35 @@ Then tell Claude:
 
 ## Installation Methods
 
-### Method 1: Zero-Clone CLI (`npx`) [Recommended]
+### Zero-Clone Setup via `npx` [Recommended]
 
-Install without cloning the git repository into your project:
+Install directly without cloning the repository into your workspace:
 
 ```bash
-npx @personal-automation/job-search-automation setup --directory /path/to/your/workspace --resume /path/to/your/resume.pdf
+npx -y github:joshyim/job-search-automations setup --directory /path/to/your/workspace --resume /path/to/your/resume.pdf
 ```
+
+- Fetches directly from GitHub into a temporary cache without polluting your workspace with source code or git history.
 - Copies runtime-necessary files into `<selected-directory>/.claude/plugins/job-search-automation/`.
 - Configures `<selected-directory>/.mcp.json` with relative paths.
 - Configures `<selected-directory>/.claude/launch.json` for Claude Desktop web preview.
+- Pre-grants permissions in `<selected-directory>/.claude/settings.json` for unattended runs.
 - Conforms strictly to the Agent Plugins specification with **zero symlinks**.
 - Stores data and configuration self-contained inside `<selected-directory>/.job-search/` (`job-search.sqlite`, `resume.pdf`, `config.json`).
 
-### Method 2: Shell Script (`./setup.sh`)
-
-#### Local SQLite Mode (Self-Contained Project Workspace)
+#### Cloud Mode (Neon PostgreSQL)
 ```bash
-./setup.sh --directory /path/to/your/workspace --resume /path/to/your/resume.pdf -y
+npx -y github:joshyim/job-search-automations setup --mode neon --resume /path/to/your/resume.pdf --neon-connection-string "postgres://..." -y
 ```
-
-#### Neon Mode (Cloud PostgreSQL)
-```bash
-./setup.sh --mode neon --resume /path/to/your/resume.pdf --neon-connection-string "postgres://..." -y
-```
-
-#### Interactive Mode
-Run `./setup.sh` without arguments to step through guided interactive configuration in your terminal.
 
 ---
 
 ## Updating Your Resume
 
-Update your active resume at any time:
+Update your active resume at any time without re-running full setup:
 
 ```bash
-# Using CLI:
-npx @personal-automation/job-search-automation update-resume /path/to/new-resume.pdf --directory /path/to/your/workspace
-
-# Using setup script:
-./setup.sh --directory /path/to/your/workspace --update-resume /path/to/new-resume.pdf
+npx -y github:joshyim/job-search-automations update-resume /path/to/new-resume.pdf --directory /path/to/your/workspace
 ```
 
 ---
@@ -130,7 +119,7 @@ npx @personal-automation/job-search-automation update-resume /path/to/new-resume
 To remove the plugin code while preserving your search history and `.job-search/` database:
 
 ```bash
-npx @personal-automation/job-search-automation uninstall --directory /path/to/your/workspace
+npx -y github:joshyim/job-search-automations uninstall --directory /path/to/your/workspace
 ```
 
 

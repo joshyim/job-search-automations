@@ -45,7 +45,7 @@ export function loadConfig(configPath?: string): ResolvedConfig {
   if (!fs.existsSync(resolvedConfigPath)) {
     throw new Error(
       `Configuration file not found at: ${resolvedConfigPath}\n` +
-      `Please run './setup.sh --directory <selected-directory> --resume <path>' to initialize your job search workspace.`
+      `Please run 'npx -y github:joshyim/job-search-automations setup --directory <selected-directory> --resume <path>' to initialize your job search workspace.`
     );
   }
 
