@@ -74,9 +74,18 @@ Output:
 - Titles considered but already covered.
 - Titles evaluated but not added (with reasons).
 
+## Unattended & Scheduled Execution Guidelines
+
+When executed as an automated routine or scheduled task (e.g., Weekly Job Title Search):
+- **Message Budget**: Complete within 25–35 messages.
+- **Batch Limits**: Add at most 1–3 new validated include or exclude patterns via `add_title_pattern` per scheduled run to keep pattern definitions clean and focused.
+- **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP fetch and `WebSearch` / `WebFetch`.
+- **Fast-Fail External Sources**: If a job board or query source is unreachable or blocked, log a warning and advance immediately. Never retry in loops.
+
 ## Rules
 
 - Do not perform direct file I/O on markdown files. All title pattern and skill reads and writes MUST go through MCP tools (`list_title_patterns`, `add_title_pattern`, `list_skills`).
 - Only add patterns where the primary function is product management or product strategy.
 - Prefer broad patterns (with wildcards `*`) over exact titles to minimize maintenance.
 - Do not apply to any roles.
+

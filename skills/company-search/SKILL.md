@@ -98,9 +98,18 @@ Output a clear summary:
 - Qualified companies passed
 - New companies added to target list via MCP
 
+## Unattended & Scheduled Execution Guidelines
+
+When executed as an automated routine or scheduled task (e.g., Weekly Company Search):
+- **Message Budget**: Complete within 30–40 messages. If more sources or candidate companies remain, stop and let the next scheduled run continue.
+- **Batch Limits**: Add at most 3–5 newly qualified companies via `add_company` per scheduled run to maintain pipeline focus.
+- **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP fetch and `WebSearch` / `WebFetch`.
+- **Fast-Fail External Sources**: If an external job board or platform is unreachable, returns 403/429, or blocks access, log a warning and advance immediately to the next source. Never retry in loops.
+
 ## Rules
 
 - Never add a company that is marked as excluded.
 - Do not perform direct file I/O on markdown files. All company reads and writes MUST go through MCP tools (`list_companies`, `add_company`, `list_title_patterns`).
 - If an external job source is unreachable or blocked, log a warning and continue to the next source. Do not halt the entire run.
 - Do not apply to any roles or interact with forms. This skill discovers companies only.
+

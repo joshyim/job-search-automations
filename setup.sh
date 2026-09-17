@@ -404,15 +404,16 @@ else
   CONFIG_FILE="$JOB_SEARCH_DIR/config.json"
 fi
 
-if [ -z "$RESUME_PATH" ]; then
-  echo -e "${RED}[ERROR] Resume path is required. Specify via --resume <path>${RESET}" >&2
-  exit 1
-fi
+TARGET_RESUME="$JOB_SEARCH_DIR/resume.pdf"
 
-RESUME_PATH="$(expand_path "$RESUME_PATH")"
-if [ ! -f "$RESUME_PATH" ]; then
-  echo -e "${RED}[ERROR] Resume file not found at: $RESUME_PATH${RESET}" >&2
-  exit 1
+if [ -n "$RESUME_PATH" ]; then
+  RESUME_PATH="$(expand_path "$RESUME_PATH")"
+  if [ ! -f "$RESUME_PATH" ]; then
+    echo -e "${RED}[ERROR] Resume file not found at: $RESUME_PATH${RESET}" >&2
+    exit 1
+  fi
+elif [ -f "$PROJECT_DIR/resume.pdf" ]; then
+  RESUME_PATH="$PROJECT_DIR/resume.pdf"
 fi
 
 if [ "$MODE" = "neon" ] && [ -z "$NEON_CONN_STR" ] && [ "$MOCK_MODE" = false ]; then
@@ -432,15 +433,21 @@ mkdir -p "$JOB_SEARCH_DIR/tmp"
 echo -e "${GREEN}[+] Workspace directory ready:${RESET} $JOB_SEARCH_DIR"
 
 # 2. Copy Resume to conventional path
-TARGET_RESUME="$JOB_SEARCH_DIR/resume.pdf"
-if [[ "$RESUME_PATH" != *.[pP][dD][fF] ]]; then
-  echo -e "${YELLOW}[WARNING] Resume does not have a .pdf extension. Downstream assessment skills expect PDF format.${RESET}"
+if [ -n "$RESUME_PATH" ] && [ -f "$RESUME_PATH" ]; then
+  if [[ "$RESUME_PATH" != *.[pP][dD][fF] ]]; then
+    echo -e "${YELLOW}[WARNING] Resume does not have a .pdf extension. Downstream assessment skills expect PDF format.${RESET}"
+  fi
+  cp "$RESUME_PATH" "$TARGET_RESUME.tmp.$$"
+  chmod 644 "$TARGET_RESUME.tmp.$$"
+  mv "$TARGET_RESUME.tmp.$$" "$TARGET_RESUME"
+  echo -e "${GREEN}[+] Resume installed to:${RESET} $TARGET_RESUME"
+elif [ -f "$TARGET_RESUME" ]; then
+  echo -e "${GREEN}[+] Existing resume preserved:${RESET} $TARGET_RESUME"
+else
+  echo -e "${YELLOW}[!] No resume provided yet.${RESET} Workspace scaffolding will proceed."
+  echo -e "    Add your resume anytime by placing it at ${BOLD}$TARGET_RESUME${RESET}"
+  echo -e "    Or by running: ${BOLD}npx -y github:joshyim/job-search-automations update-resume <path>${RESET}"
 fi
-
-cp "$RESUME_PATH" "$TARGET_RESUME.tmp.$$"
-chmod 644 "$TARGET_RESUME.tmp.$$"
-mv "$TARGET_RESUME.tmp.$$" "$TARGET_RESUME"
-echo -e "${GREEN}[+] Resume installed to:${RESET} $TARGET_RESUME"
 
 # If legacy WORKFLOW_DATA_PATH was specified, also place resume there
 if [ -n "$WORKFLOW_DATA_PATH" ] && [ "$WORKFLOW_DATA_PATH" != "$JOB_SEARCH_DIR" ]; then
@@ -692,7 +699,7 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
       }
     }
 
-    for (const f of ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql', 'CLAUDE.md']) {
+    for (const f of ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql', 'CLAUDE.md', 'installation-steps.md']) {
       const s = path.join(repoRoot, f);
       if (fs.existsSync(s)) fs.copyFileSync(s, path.join(pluginDir, f));
     }

@@ -12,6 +12,7 @@ When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to inst
    - Do **NOT** warn about ephemeral cloud sandboxes. Claude Code connects directly to the user's workspace, and data persists permanently in `<selected-directory>/.job-search/` (containing `job-search.sqlite`, `resume.pdf`, and `config.json`).
    - Do **NOT** ask about Neon database strings or storage modes unless the user explicitly requests Neon cloud mode. Local SQLite mode is the default zero-dependency mode.
    - Do **NOT** attempt to install Playwright or Chromium. The crawler runs zero-browser lightweight fetch with ATS APIs.
+   - For universal, multi-harness installation flags and details, refer to [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md).
 
 > [!CRITICAL]
 > **NEVER run `git clone` to install this plugin.**
@@ -22,10 +23,11 @@ When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to inst
      > *"To set up your job search pipeline, please provide the path to your resume PDF (for example: `~/Documents/resume.pdf` or drag-and-drop it here)."*
 
 3. **Execute Setup**:
-   - Run the automated setup specifying the target directory via `npx`:
+   - Run the automated zero-clone setup via `npx`:
      ```bash
-     npx -y github:joshyim/job-search-automations setup --directory "<path-to-workspace>" --resume "<path-to-resume.pdf>"
+     npx -y github:joshyim/job-search-automations setup
      ```
+     *(Optionally append `--resume "<path-to-resume.pdf>"` if the user has already provided a resume file).*
    - Setup will:
      - Pre-compile packages and install the self-contained plugin into `<selected-directory>/.claude/plugins/job-search-automation/`
      - Configure `<selected-directory>/.mcp.json` to launch the database MCP server via plugin-relative path
@@ -37,6 +39,7 @@ When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to inst
    - Once setup reports completion, ask the user:
      > *"Your job search pipeline is ready! What job titles, locations, or target companies would you like to start with?"*
    - Save their preferences and offer to run their first search using `company-search` or `job-search-lead-gen`.
+   - If asked to set up routines or recurring schedules, follow the **Canonical Routines** defined below and in [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md). **NEVER create a "Weekly digest" routine.**
 
 ## Runtime Architecture
 
@@ -105,8 +108,11 @@ In a user's project workspace after installation, the source repo and git histor
    - **Batch Limits**:
      - Crawl: Process at most 2–3 companies per scheduled run (via `get_batch({ limit: 3 })`).
      - Assess: Process at most 5 pending postings per scheduled run (via `get_pending_queue`).
+     - Company Discovery (`company-search`): Add at most 3–5 newly qualified companies per scheduled run.
+     - Title Discovery (`title-discovery`): Add at most 1–3 newly validated title patterns per scheduled run.
    - **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple `WebFetch`.
    - **Fast-Fail URLs**: If an ATS board is unreachable or a posting URL redirects/404s, immediately mark it skipped via `update_queue_status` and move to the next item. Never enter retry loops.
+   - **Strict Anti-Hallucination Guardrail (No Weekly Digest)**: There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest routine. Only configure the 4 canonical routines documented in [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md).
 9. **Candidate Status Ownership & Human-in-the-Loop Disposition**:
    - Automated assessment and crawler agents must **never** unilaterally set candidate status to `not_pursuing`, `closed`, `rejected`, `applied`, or any other disposition status.
    - When recording candidates via `add_candidate`, always record with `status: "new"`.
@@ -136,9 +142,30 @@ The local Web UI dashboard provides a visual interface for reviewing scored cand
 - **`title-discovery`**: Discovers target job titles and skills based on resume analysis.
 - **`pipeline-diagram`**: Generates Mermaid diagrams of the pipeline state.
 
+## Canonical Routines & Recurring Scheduling
+
+When asked to configure routines or recurring background jobs, configure ONLY the four canonical routines below. See [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md) for full prompt templates, budgets, and cloud management steps.
+
+1. **Weekly Company Search** (`company-search`):
+   - Schedule: Sunday 8:00 PM (`0 20 * * 0`)
+   - Bounds: Add at most 3–5 newly qualified companies; budget 30–40 messages.
+2. **Weekly Job Title Search** (`title-discovery`):
+   - Schedule: Sunday 9:00 PM (`0 21 * * 0`)
+   - Bounds: Add at most 1–3 new validated patterns; budget 25–35 messages.
+3. **Daily Job Crawl** (`job-search-crawl` or `job-search-lead-gen`):
+   - Schedule: Daily 6:00 AM (`0 6 * * *`)
+   - Bounds: Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages.
+4. **Daily Job Evaluation** (`job-search-assess`):
+   - Schedule: Daily 7:00 AM (`0 7 * * *`)
+   - Bounds: Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages.
+
+> [!CRITICAL]
+> **NEVER configure a "Weekly digest" routine.** No digest tool, skill, or service exists.
+
 ## Resume Updates
 
 If the user provides a new resume later:
 ```bash
 npx -y github:joshyim/job-search-automations update-resume "<path-to-new-resume.pdf>" --directory "<path-to-workspace>"
 ```
+

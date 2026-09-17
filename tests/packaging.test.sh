@@ -270,6 +270,25 @@ else
   fail "setup.sh missing job-search-ui build step"
 fi
 
+# Check installation-steps.md exists and documents canonical routines
+assert_file_exists "$PLUGIN_ROOT/installation-steps.md" "installation-steps.md exists at plugin root"
+if grep -q "github:joshyim/job-search-automations setup" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -q "company-search" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -q "title-discovery" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -q "job-search-crawl" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -q "job-search-assess" "$PLUGIN_ROOT/installation-steps.md"; then
+  pass "installation-steps.md documents universal npx setup and all 4 canonical routines"
+else
+  fail "installation-steps.md missing setup command or canonical routine definitions"
+fi
+
+if grep -qi "Weekly Digest" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -qi "Anti-Hallucination" "$PLUGIN_ROOT/installation-steps.md"; then
+  pass "installation-steps.md includes Anti-Hallucination guardrail against Weekly Digest"
+else
+  fail "installation-steps.md missing Weekly Digest anti-hallucination guardrail"
+fi
+
 
 # ------------------------------------------------------------------------------
 # Story 5: Claude Code & Cowork Manifests Conformance

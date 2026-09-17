@@ -188,7 +188,7 @@ async function handleSetup(args) {
   };
 
   // Copy root manifests and agent guidelines
-  const rootFiles = ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql', 'CLAUDE.md'];
+  const rootFiles = ['plugin.json', 'mcp.json', '.mcp.json', 'schema.sql', 'CLAUDE.md', 'installation-steps.md'];
   for (const f of rootFiles) {
     const src = path.join(REPO_ROOT, f);
     if (fs.existsSync(src)) {
@@ -416,11 +416,20 @@ async function handleSetup(args) {
     fs.copyFileSync(expResume, targetResume);
     fs.chmodSync(targetResume, 0o644);
     console.log(`${GREEN}[+] Resume installed to:${RESET} ${targetResume}`);
-  } else if (!fs.existsSync(targetResume)) {
-    console.error(`${RED}[ERROR] Resume path is required. Specify via --resume <path>${RESET}`);
-    process.exit(1);
-  } else {
+  } else if (fs.existsSync(targetResume)) {
     console.log(`${GREEN}[+] Existing resume preserved:${RESET} ${targetResume}`);
+  } else {
+    // Check for a local resume.pdf in the workspace root
+    const localResume = path.join(projectDir, 'resume.pdf');
+    if (fs.existsSync(localResume)) {
+      fs.copyFileSync(localResume, targetResume);
+      fs.chmodSync(targetResume, 0o644);
+      console.log(`${GREEN}[+] Auto-detected and installed local resume:${RESET} ${localResume}`);
+    } else {
+      console.log(`${YELLOW}[!] No resume provided yet.${RESET} Workspace scaffolding will proceed.`);
+      console.log(`    You can add your resume anytime by placing it at: ${BOLD}${targetResume}${RESET}`);
+      console.log(`    Or by running: ${BOLD}npx -y github:joshyim/job-search-automations update-resume <path>${RESET}`);
+    }
   }
 
   // Handle SQLite / Database initialization

@@ -248,6 +248,7 @@ assert_file_exists "$PROJECT_DIR/.job-search/resume.pdf" ".job-search/resume.pdf
 assert_file_exists "$PROJECT_DIR/.job-search/.gitignore" ".job-search/.gitignore created"
 assert_dir_exists "$PROJECT_DIR/.job-search/tmp" ".job-search/tmp directory created (PRO-32)"
 assert_file_exists "$PROJECT_DIR/.claude/plugins/job-search-automation/CLAUDE.md" "CLAUDE.md installed in plugin directory (PRO-31)"
+assert_file_exists "$PROJECT_DIR/.claude/plugins/job-search-automation/installation-steps.md" "installation-steps.md installed in plugin directory"
 
 # Verify .claude/launch.json and .claude/settings.json created (PRO-30, PRO-32)
 assert_file_exists "$PROJECT_DIR/.claude/launch.json" ".claude/launch.json created in project directory"

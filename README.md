@@ -81,13 +81,17 @@ Then tell Claude:
 
 ## Installation Methods
 
+> [!TIP]
+> For the comprehensive, multi-harness setup guide (including Codex, Claude Code, and ChatGPT instructions, CLI flags, and cloud mode setup), see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md).
+
 ### Zero-Clone Setup via `npx` [Recommended]
 
 Install directly without cloning the repository into your workspace:
 
 ```bash
-npx -y github:joshyim/job-search-automations setup --directory /path/to/your/workspace --resume /path/to/your/resume.pdf
+npx -y github:joshyim/job-search-automations setup
 ```
+
 
 - Fetches directly from GitHub into a temporary cache without polluting your workspace with source code or git history.
 - Copies runtime-necessary files into `<selected-directory>/.claude/plugins/job-search-automation/`.
@@ -214,19 +218,35 @@ Access the dashboard at `http://localhost:3847`. If port `3847` is already in us
 
 ## Recurring Pipeline Scheduling (via `/schedule`)
 
-Automate your job search on a recurring schedule using your agent harness's scheduling mechanism. Scheduled tasks run unattended, so prompts should include an explicit message budget and batch limit:
+Automate your job search on a recurring schedule using your agent harness's scheduling mechanism (e.g. Claude Code's `/schedule` command or cloud routines). Scheduled tasks run unattended, so prompts should include an explicit message budget and batch limit.
 
-### Weekday Morning Pipeline Run
-Run the lead generation orchestrator every weekday morning at 9:00 AM with a bounded batch and message budget:
+> [!NOTE]
+> For complete routine configurations, prompt templates, and cloud routine management steps, see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md). Note: there is **no Weekly Digest routine** in this repository.
+
+### 1. Weekly Company Search Run (`company-search`)
+Discover new target companies hiring for candidate roles across YC, BuiltIn, Wellfound, and LinkedIn (Sunday 8:00 PM):
 ```text
-/schedule CronExpression="0 9 * * 1-5" Prompt="Run job-search-lead-gen for a batch of 3 companies. Complete within 50 messages. If more companies remain, stop and let the next scheduled run continue."
+/schedule CronExpression="0 20 * * 0" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages."
 ```
 
-### Daily Pipeline Assessment Run
-Process and score pending crawl queue postings daily at 6:00 PM (up to 5 postings per run):
+### 2. Weekly Job Title Search Run (`title-discovery`)
+Discover emerging titles and keyword patterns matching candidate skills (Sunday 9:00 PM):
 ```text
-/schedule CronExpression="0 18 * * *" Prompt="Run job-search-assess for up to 5 pending crawl queue entries. Complete within 40 messages."
+/schedule CronExpression="0 21 * * 0" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
 ```
+
+### 3. Daily Morning Crawl Run (`job-search-crawl` / `job-search-lead-gen`)
+Crawl target company career boards and enqueue matching openings (Daily 6:00 AM):
+```text
+/schedule CronExpression="0 6 * * *" Prompt="Run job-search-crawl across least-recently-searched companies using get_batch({ limit: 3 }). Match postings against title patterns and enqueue matched roles via add_to_queue. Complete within 45 messages."
+```
+
+### 4. Daily Morning Assessment Run (`job-search-assess`)
+Process and score pending crawl queue postings against resume and dynamic rubric (Daily 7:00 AM):
+```text
+/schedule CronExpression="0 7 * * *" Prompt="Run job-search-assess for up to 5 pending postings from get_pending_queue. Score against candidate resume and scoring rubric, and record each scored candidate via add_candidate with status 'new'. Complete within 45 messages."
+```
+
 
 ---
 
