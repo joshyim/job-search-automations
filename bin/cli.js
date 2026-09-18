@@ -664,6 +664,13 @@ async function handleSetup(args) {
   console.log(`                     ${GREEN}✓${RESET} Ephemeral Temp:    ${CYAN}.job-search/tmp/*${RESET} (mkdir, rm, tee)`);
   console.log(`                     ${GREEN}✓${RESET} MCP Database:      ${CYAN}mcp__job-search-db__*${RESET} (all tools pre-approved)`);
   console.log(`                     ${GREEN}✓${RESET} Web Access:        ${CYAN}WebSearch${RESET}, ${CYAN}WebFetch${RESET} (fallback discovery)`);
+  console.log(`\n${CYAN}${BOLD}Recurring Pipeline Runs:${RESET}`);
+  console.log(`  Use the /schedule command or harness routine settings to automate runs:`);
+  console.log(`  /schedule CronExpression="0 9 * * 1-5" Prompt="Run job-search-lead-gen for a batch of 3 companies in directory '${projectDir}'. Complete within 50 messages."`);
+  console.log(`\n  ${BOLD}Model Class Recommendation:${RESET}`);
+  console.log(`    • Claude Code / Desktop: Recommend Sonnet-class (cost-effective, balanced)`);
+  console.log(`    • OpenAI / Codex:        Recommend Luna-class (fast, low token cost)`);
+  console.log(`    (Avoid defaulting unattended recurring routines to expensive flagship models like Opus)`);
   console.log(`\nPlease restart your Claude session for skills and MCP tools to load.`);
 }
 

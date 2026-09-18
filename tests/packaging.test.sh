@@ -256,6 +256,13 @@ else
   fail "setup.sh missing /schedule post-install instructions"
 fi
 
+if grep -qi "Sonnet-class" "$PLUGIN_ROOT/setup.sh" && \
+   grep -qi "Luna-class" "$PLUGIN_ROOT/setup.sh"; then
+  pass "setup.sh post-install banner includes Sonnet-class and Luna-class model recommendations"
+else
+  fail "setup.sh missing model class recommendations in post-install banner"
+fi
+
 # Check README.md post-install cron documentation
 if grep -Fq "/schedule" "$PLUGIN_ROOT/README.md"; then
   pass "README.md documents recurring runs via /schedule"
@@ -296,6 +303,13 @@ else
   fail "installation-steps.md missing Auto approval mode instructions"
 fi
 
+if grep -qi "Sonnet-class" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -qi "Luna-class" "$PLUGIN_ROOT/installation-steps.md"; then
+  pass "installation-steps.md documents Sonnet-class and Luna-class model recommendations"
+else
+  fail "installation-steps.md missing model class recommendations"
+fi
+
 
 # ------------------------------------------------------------------------------
 # Story 5: Claude Code & Cowork Manifests Conformance
@@ -324,6 +338,12 @@ if grep -qi "Mandatory Auto Approval for Routines" "$PLUGIN_ROOT/CLAUDE.md" && \
   pass "CLAUDE.md mandates Auto approval mode for scheduled routines"
 else
   fail "CLAUDE.md missing Auto approval mode instructions"
+fi
+
+if grep -qi "Sonnet-class" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md documents Sonnet-class model recommendation for routines"
+else
+  fail "CLAUDE.md missing Sonnet-class model recommendation"
 fi
 
 assert_file_exists "$PLUGIN_ROOT/.claude-plugin/marketplace.json" ".claude-plugin/marketplace.json exists"

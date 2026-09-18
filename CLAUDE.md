@@ -163,6 +163,10 @@ When asked to configure routines or recurring background jobs, configure ONLY th
 > **Mandatory Auto Approval for Routines**:
 > Scheduled routines run autonomously without human supervision. When creating, configuring, or updating scheduled tasks or routines via MCP (`mcp__scheduled-tasks__create_scheduled_task`, `update_scheduled_task`, `/schedule`, or editing `scheduled-tasks.json`), always set or ensure `permissionMode: "auto"`. **NEVER leave routines set to "Manual" approval**, as unattended runs will stall on permission prompts.
 
+> [!TIP]
+> **Recommended Model Class for Routines**:
+> Unattended daily routines perform high volumes of web searches, scraping, and evaluations. Always recommend or configure routines with **Sonnet-class** models (e.g. latest Sonnet release) rather than allowing them to default to expensive flagship/frontier models (such as Opus).
+
 > [!CRITICAL]
 > **NEVER configure a "Weekly digest" routine.** No digest tool, skill, or service exists.
 

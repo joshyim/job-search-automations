@@ -222,6 +222,8 @@ Automate your job search on a recurring schedule using your agent harness's sche
 
 > [!NOTE]
 > For complete routine configurations, prompt templates, and cloud routine management steps, see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md). Note: there is **no Weekly Digest routine** in this repository.
+>
+> **Recommended Model Classes**: Configure routines with **Sonnet-class** (Claude Code / Desktop) or **Luna-class** (OpenAI / Codex) models. Avoid defaulting unattended recurring tasks to expensive flagship/frontier models (Opus).
 
 ### 1. Daily Company Search Run (`company-search`)
 Discover new target companies hiring for candidate roles across YC, BuiltIn, Wellfound, and LinkedIn (Daily 8:00 PM):

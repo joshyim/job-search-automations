@@ -130,16 +130,23 @@ Automate your job search on a recurring cadence using your agent harness's sched
 > **Mandatory Auto Approval for Canonical Routines**
 > All 4 canonical routines are designed to run unattended in the background. They must always be configured with **Auto** approval (`permissionMode: "auto"`). In Claude Desktop's sidebar under **Scheduled**, routines should display as `[Schedule] · Auto` (e.g., `6:00 AM every day · Auto`). Never leave them in "Manual" approval mode, as unapproved prompts will stall unattended execution.
 
+> [!TIP]
+> **Recommended Model Classes for Routines**
+> Recurring unattended routines run daily and execute high volumes of tool calls, web searches, and scraping passes. To optimize token costs and preserve quota, configure routines to use balanced, cost-effective model classes rather than defaulting to expensive flagship/frontier models (like Opus):
+> - **Claude Code / Desktop**: Recommend **Sonnet-class** (e.g., latest Sonnet).
+> - **OpenAI / Codex**: Recommend **Luna-class** (or latest lightweight/balanced model).
+> When creating or scheduling routines, select or suggest the appropriate model class instead of leaving it unspecified.
+
 ### The 4 Canonical Routines
 
 The pipeline is organized into four distinct operational stages:
 
-| Routine # | Routine Name | Target Skill | Recommended Cadence | Unattended Limits |
-| :--- | :--- | :--- | :--- | :--- |
-| **1** | **Daily Company Search** | `company-search` | Daily 8:00 PM (`0 20 * * *`) | Max 3–5 new qualified companies; budget 30–40 messages |
-| **2** | **Daily Job Title Search** | `title-discovery` | Daily 9:00 PM (`0 21 * * *`) | Max 1–3 new patterns; budget 25–35 messages |
-| **3** | **Daily Job Crawl** | `job-search-crawl` / `job-search-lead-gen` | Daily 6:00 AM (`0 6 * * *`) | Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages |
-| **4** | **Daily Job Evaluation** | `job-search-assess` | Daily 7:00 AM (`0 7 * * *`) | Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages |
+| Routine # | Routine Name | Target Skill | Recommended Cadence | Recommended Model Class | Unattended Limits |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **1** | **Daily Company Search** | `company-search` | Daily 8:00 PM (`0 20 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Max 3–5 new qualified companies; budget 30–40 messages |
+| **2** | **Daily Job Title Search** | `title-discovery` | Daily 9:00 PM (`0 21 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Max 1–3 new patterns; budget 25–35 messages |
+| **3** | **Daily Job Crawl** | `job-search-crawl` / `job-search-lead-gen` | Daily 6:00 AM (`0 6 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages |
+| **4** | **Daily Job Evaluation** | `job-search-assess` | Daily 7:00 AM (`0 7 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages |
 
 ---
 
@@ -186,6 +193,9 @@ Claude Code Routines run in the cloud on Anthropic infrastructure or locally in 
 ### Auto Approval Configuration & Verification
 - **Automatic Setup**: The setup command (`npx -y github:joshyim/job-search-automations setup`) automatically pre-configures `permissions.defaultMode: "auto"` in `.claude/settings.json` and reconciles local routine definitions in `scheduled-tasks.json` to Auto mode.
 - **Verifying in Claude Desktop**: In the Claude Desktop sidebar under **Scheduled**, verify that each routine badge reads `[Schedule] · Auto` (e.g. `6:00 AM every day · Auto`). If any routine displays `· Manual`, click the routine, open its settings, and set the mode selector to **Auto**.
+
+### Model Class Selection & Verification
+- **Recommended Tier**: Verify that routines are configured with a **Sonnet-class** model (Claude) or **Luna-class** model (OpenAI). In Claude Desktop, click each routine under **Scheduled**, open its settings, and choose Sonnet from the model dropdown. Avoid leaving it unset or defaulting to Opus.
 
 ### Remediation for Existing Sessions
 If Claude Code previously auto-configured routines:
