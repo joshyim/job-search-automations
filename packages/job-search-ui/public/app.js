@@ -88,6 +88,43 @@
       this.backdrop.classList.remove('hidden');
     },
 
+    confirm({ title = 'Confirm Action', message = 'Are you sure?', confirmText = 'Delete', confirmClass = 'btn-danger', onConfirm }) {
+      this.title.textContent = title;
+      this.body.innerHTML = `
+        <div style="padding: 6px 0;">
+          <p class="text-sm text-secondary" style="margin-bottom: 24px; line-height: 1.5;">${escapeHtml(message)}</p>
+          <div class="modal-footer" style="margin: 20px -24px -24px; padding: 16px 24px; display: flex; justify-content: flex-end; gap: 10px;">
+            <button type="button" class="btn btn-secondary" id="modal-confirm-cancel">Cancel</button>
+            <button type="button" class="btn ${confirmClass}" id="modal-confirm-proceed">${escapeHtml(confirmText)}</button>
+          </div>
+        </div>
+      `;
+      this.backdrop.classList.remove('hidden');
+
+      const cancelBtn = document.getElementById('modal-confirm-cancel');
+      const proceedBtn = document.getElementById('modal-confirm-proceed');
+
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+          this.close();
+        });
+      }
+
+      if (proceedBtn) {
+        proceedBtn.addEventListener('click', async () => {
+          proceedBtn.disabled = true;
+          proceedBtn.textContent = 'Processing...';
+          try {
+            if (onConfirm) {
+              await onConfirm();
+            }
+          } finally {
+            this.close();
+          }
+        });
+      }
+    },
+
     close() {
       this.backdrop.classList.add('hidden');
       this.body.innerHTML = '';
@@ -936,18 +973,28 @@
 
     // Attach remove handlers
     document.querySelectorAll('.btn-remove-pattern').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const pattern = btn.dataset.pattern;
         const type = btn.dataset.type;
-        if (confirm(`Remove title pattern "${pattern}"?`)) {
-          try {
-            await callMcp('remove_title_pattern', { pattern, type });
-            showToast(`Removed title pattern "${pattern}"`, 'success');
-            await loadTitlePatterns();
-          } catch (err) {
-            // error already toasted
-          }
-        }
+        modal.confirm({
+          title: 'Remove Title Pattern',
+          message: `Are you sure you want to remove the ${type} title pattern "${pattern}"?`,
+          confirmText: 'Remove Pattern',
+          confirmClass: 'btn-danger',
+          onConfirm: async () => {
+            try {
+              const res = await callMcp('remove_title_pattern', { pattern, type });
+              if (res && res.success === false) {
+                showToast(`Title pattern "${pattern}" was not found or could not be removed`, 'error');
+              } else {
+                showToast(`Removed title pattern "${pattern}"`, 'success');
+              }
+              await loadTitlePatterns();
+            } catch (err) {
+              showToast(`Failed to remove title pattern: ${err.message || err}`, 'error');
+            }
+          },
+        });
       });
     });
   }
@@ -1035,15 +1082,27 @@
 
     // Attach remove
     document.querySelectorAll('.btn-remove-skill').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const skillName = btn.dataset.skill;
-        if (confirm(`Remove skill "${skillName}"?`)) {
-          try {
-            await callMcp('remove_skill', { name: skillName });
-            showToast(`Removed skill "${skillName}"`, 'success');
-            await loadSkills();
-          } catch (err) {}
-        }
+        modal.confirm({
+          title: 'Remove Target Skill',
+          message: `Are you sure you want to remove "${skillName}" from the target skills list?`,
+          confirmText: 'Remove Skill',
+          confirmClass: 'btn-danger',
+          onConfirm: async () => {
+            try {
+              const res = await callMcp('remove_skill', { name: skillName });
+              if (res && res.success === false) {
+                showToast(`Skill "${skillName}" was not found or could not be removed`, 'error');
+              } else {
+                showToast(`Removed skill "${skillName}"`, 'success');
+              }
+              await loadSkills();
+            } catch (err) {
+              showToast(`Failed to remove skill: ${err.message || err}`, 'error');
+            }
+          },
+        });
       });
     });
   }
@@ -1167,15 +1226,27 @@
 
     // Attach delete
     document.querySelectorAll('.btn-remove-rubric').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      btn.addEventListener('click', () => {
         const dimName = btn.dataset.dim;
-        if (confirm(`Remove dimension "${dimName}"?`)) {
-          try {
-            await callMcp('remove_rubric_dimension', { dimension: dimName });
-            showToast(`Removed dimension "${dimName}"`, 'success');
-            await loadRubric();
-          } catch (err) {}
-        }
+        modal.confirm({
+          title: 'Remove Rubric Dimension',
+          message: `Are you sure you want to delete the "${dimName}" rubric dimension? Total weight sum may need adjustment afterwards.`,
+          confirmText: 'Delete Dimension',
+          confirmClass: 'btn-danger',
+          onConfirm: async () => {
+            try {
+              const res = await callMcp('remove_rubric_dimension', { dimension: dimName });
+              if (res && res.success === false) {
+                showToast(`Dimension "${dimName}" was not found or could not be removed`, 'error');
+              } else {
+                showToast(`Removed dimension "${dimName}"`, 'success');
+              }
+              await loadRubric();
+            } catch (err) {
+              showToast(`Failed to remove dimension: ${err.message || err}`, 'error');
+            }
+          },
+        });
       });
     });
   }

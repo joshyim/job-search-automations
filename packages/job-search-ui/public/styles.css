@@ -489,6 +489,18 @@ body.view-is-visualization .content-body,
   border-color: var(--border-strong);
 }
 
+.btn-danger {
+  background: var(--danger);
+  color: #ffffff;
+  border-color: var(--danger);
+}
+
+.btn-danger:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+  box-shadow: 0 2px 6px rgba(220, 38, 38, 0.25);
+}
+
 .btn-sm {
   padding: 5px 12px;
   font-size: 12px;
@@ -503,6 +515,10 @@ body.view-is-visualization .content-body,
   color: var(--text-muted);
   cursor: pointer;
   transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.btn-icon svg {
+  pointer-events: none;
 }
 
 .btn-icon:hover {
