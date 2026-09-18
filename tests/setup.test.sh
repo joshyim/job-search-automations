@@ -270,6 +270,7 @@ assert_equals "VALID" "$LAUNCH_JSON_VALID" ".claude/launch.json contains job-sea
 
 assert_file_exists "$PROJECT_DIR/.claude/settings.json" ".claude/settings.json created with permissions"
 SETTINGS_CONTENT="$(cat "$PROJECT_DIR/.claude/settings.json")"
+assert_contains "$SETTINGS_CONTENT" '"defaultMode": "auto"' ".claude/settings.json contains permissions.defaultMode = auto"
 assert_contains "$SETTINGS_CONTENT" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json contains mkdir .job-search/tmp* permission (PRO-32)"
 assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json contains rm -rf ./.job-search/tmp* permission (PRO-32)"
 assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json contains rm -rf .job-search/tmp* permission (PRO-32)"

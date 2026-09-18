@@ -762,6 +762,7 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
     }
     if (typeof cfg.permissions !== 'object' || cfg.permissions === null) cfg.permissions = {};
     if (!Array.isArray(cfg.permissions.allow)) cfg.permissions.allow = [];
+    cfg.permissions.defaultMode = 'auto';
 
     const absCrawler = path.join(pluginDir, 'scripts', 'crawl-job-board.js');
     const absTmp = path.join(projectDir, '.job-search', 'tmp');
@@ -846,8 +847,67 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
       if (!cfg.permissions.allow.includes(g)) cfg.permissions.allow.push(g);
     }
     fs.writeFileSync(settingsFile, JSON.stringify(cfg, null, 2) + '\n');
+
+    // Reconcile existing Claude Desktop / Code scheduled routines to "auto"
+    try {
+      const os = require('os');
+      const candidates = [];
+      if (process.platform === 'darwin') {
+        const macBase = path.join(os.homedir(), 'Library', 'Application Support', 'Claude');
+        candidates.push(path.join(macBase, 'claude-code-sessions'));
+        candidates.push(path.join(macBase, 'local-agent-mode-sessions'));
+      } else if (process.platform === 'win32') {
+        const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+        const winBase = path.join(appData, 'Claude');
+        candidates.push(path.join(winBase, 'claude-code-sessions'));
+        candidates.push(path.join(winBase, 'local-agent-mode-sessions'));
+      } else {
+        const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+        const linuxBase = path.join(xdgConfig, 'Claude');
+        candidates.push(path.join(linuxBase, 'claude-code-sessions'));
+        candidates.push(path.join(linuxBase, 'local-agent-mode-sessions'));
+      }
+      let patchedCount = 0;
+      for (const baseDir of candidates) {
+        if (!fs.existsSync(baseDir)) continue;
+        let accountDirs = [];
+        try { accountDirs = fs.readdirSync(baseDir); } catch { continue; }
+        for (const acc of accountDirs) {
+          const accPath = path.join(baseDir, acc);
+          try { if (!fs.statSync(accPath).isDirectory()) continue; } catch { continue; }
+          let orgDirs = [];
+          try { orgDirs = fs.readdirSync(accPath); } catch { continue; }
+          for (const org of orgDirs) {
+            const orgPath = path.join(accPath, org);
+            try { if (!fs.statSync(orgPath).isDirectory()) continue; } catch { continue; }
+            const tasksFile = path.join(orgPath, 'scheduled-tasks.json');
+            if (fs.existsSync(tasksFile)) {
+              try {
+                const data = JSON.parse(fs.readFileSync(tasksFile, 'utf-8'));
+                let modified = false;
+                if (Array.isArray(data.scheduledTasks)) {
+                  for (const task of data.scheduledTasks) {
+                    const isJobSearch = (typeof task.id === 'string' && task.id.startsWith('job-search-')) ||
+                                        (typeof task.cwd === 'string' && path.resolve(task.cwd) === path.resolve(projectDir));
+                    if (isJobSearch && task.permissionMode !== 'auto') {
+                      task.permissionMode = 'auto';
+                      modified = true;
+                      patchedCount++;
+                    }
+                  }
+                }
+                if (modified) fs.writeFileSync(tasksFile, JSON.stringify(data, null, 2) + '\n');
+              } catch {}
+            }
+          }
+        }
+      }
+      if (patchedCount > 0) {
+        console.log('[+] Configured ' + patchedCount + ' scheduled routine(s) for Auto approval (unattended mode).');
+      }
+    } catch {}
   "
-  echo -e "${GREEN}[+] Permissions pre-granted for unattended runs:${RESET} $SETTINGS_FILE"
+  echo -e "${GREEN}[+] Permissions pre-granted (Auto approval mode):${RESET} $SETTINGS_FILE"
 
   # Configure project .claude/launch.json for web preview
   LAUNCH_FILE="$PROJECT_DIR/.claude/launch.json"

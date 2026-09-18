@@ -68,7 +68,7 @@ Setup automatically scaffolds a clean, self-contained architecture inside your s
    - Configured with plugin-relative paths to launch the `job-search-db` stdio MCP server.
 4. **Desktop & Agent Configuration**:
    - `<workspace>/.claude/launch.json`: Claude Desktop web preview entry for the local UI dashboard.
-   - `<workspace>/.claude/settings.json`: Pre-granted permissions for unattended runs (crawler script execution, scoped read/write in `.job-search/**`, all `mcp__job-search-db__*` tools).
+   - `<workspace>/.claude/settings.json`: Pre-configures `"defaultMode": "auto"` and pre-grants permissions for unattended runs (crawler script execution, scoped read/write in `.job-search/**`, all `mcp__job-search-db__*` tools).
 
 ---
 
@@ -126,6 +126,10 @@ Automate your job search on a recurring cadence using your agent harness's sched
 > **Anti-Hallucination Guardrail: No "Weekly Digest" Routine**
 > There is **no Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest. Only configure the 4 canonical routines defined below.
 
+> [!IMPORTANT]
+> **Mandatory Auto Approval for Canonical Routines**
+> All 4 canonical routines are designed to run unattended in the background. They must always be configured with **Auto** approval (`permissionMode: "auto"`). In Claude Desktop's sidebar under **Scheduled**, routines should display as `[Schedule] · Auto` (e.g., `6:00 AM every day · Auto`). Never leave them in "Manual" approval mode, as unapproved prompts will stall unattended execution.
+
 ### The 4 Canonical Routines
 
 The pipeline is organized into four distinct operational stages:
@@ -175,9 +179,13 @@ Pulls pending listings from the crawl queue, validates active status, scores aga
 
 ---
 
-## 5. Managing Active Cloud Routines
+## 5. Managing Active Cloud & Desktop Routines
 
-Claude Code Routines run in the cloud on Anthropic infrastructure and can be reviewed or edited at **[claude.ai/code/routines](https://claude.ai/code/routines)** or directly in the Claude Code terminal.
+Claude Code Routines run in the cloud on Anthropic infrastructure or locally in Claude Desktop. They can be reviewed or edited at **[claude.ai/code/routines](https://claude.ai/code/routines)** or under the **Scheduled** section in the Claude Desktop sidebar.
+
+### Auto Approval Configuration & Verification
+- **Automatic Setup**: The setup command (`npx -y github:joshyim/job-search-automations setup`) automatically pre-configures `permissions.defaultMode: "auto"` in `.claude/settings.json` and reconciles local routine definitions in `scheduled-tasks.json` to Auto mode.
+- **Verifying in Claude Desktop**: In the Claude Desktop sidebar under **Scheduled**, verify that each routine badge reads `[Schedule] · Auto` (e.g. `6:00 AM every day · Auto`). If any routine displays `· Manual`, click the routine, open its settings, and set the mode selector to **Auto**.
 
 ### Remediation for Existing Sessions
 If Claude Code previously auto-configured routines:
@@ -185,6 +193,7 @@ If Claude Code previously auto-configured routines:
 2. **Add "Daily Company Search"**: Create the daily 8:00 PM routine using the prompt in Section 4.
 3. **Add "Daily Job Title Search"**: Create the daily 9:00 PM routine using the prompt in Section 4.
 4. **Verify Crawl & Evaluation**: Ensure the Daily Crawl (6:00 AM) and Daily Evaluation (7:00 AM) have explicit batch limits (3 companies, 5 postings) and message budgets (40–50 messages).
+5. **Set Approval to Auto**: Confirm all active routines have Auto approval enabled.
 
 ---
 

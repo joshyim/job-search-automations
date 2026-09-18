@@ -159,6 +159,10 @@ When asked to configure routines or recurring background jobs, configure ONLY th
    - Schedule: Daily 7:00 AM (`0 7 * * *`)
    - Bounds: Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages.
 
+> [!IMPORTANT]
+> **Mandatory Auto Approval for Routines**:
+> Scheduled routines run autonomously without human supervision. When creating, configuring, or updating scheduled tasks or routines via MCP (`mcp__scheduled-tasks__create_scheduled_task`, `update_scheduled_task`, `/schedule`, or editing `scheduled-tasks.json`), always set or ensure `permissionMode: "auto"`. **NEVER leave routines set to "Manual" approval**, as unattended runs will stall on permission prompts.
+
 > [!CRITICAL]
 > **NEVER configure a "Weekly digest" routine.** No digest tool, skill, or service exists.
 

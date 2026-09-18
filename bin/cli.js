@@ -120,6 +120,70 @@ function ensurePackagesBuilt() {
   }
 }
 
+function reconcileClaudeScheduledRoutines(projectDir) {
+  let patchedCount = 0;
+  try {
+    const candidates = [];
+    if (process.platform === 'darwin') {
+      const macBase = path.join(os.homedir(), 'Library', 'Application Support', 'Claude');
+      candidates.push(path.join(macBase, 'claude-code-sessions'));
+      candidates.push(path.join(macBase, 'local-agent-mode-sessions'));
+    } else if (process.platform === 'win32') {
+      const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+      const winBase = path.join(appData, 'Claude');
+      candidates.push(path.join(winBase, 'claude-code-sessions'));
+      candidates.push(path.join(winBase, 'local-agent-mode-sessions'));
+    } else {
+      const xdgConfig = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+      const linuxBase = path.join(xdgConfig, 'Claude');
+      candidates.push(path.join(linuxBase, 'claude-code-sessions'));
+      candidates.push(path.join(linuxBase, 'local-agent-mode-sessions'));
+    }
+
+    for (const baseDir of candidates) {
+      if (!fs.existsSync(baseDir)) continue;
+      let accountDirs = [];
+      try { accountDirs = fs.readdirSync(baseDir); } catch { continue; }
+      for (const acc of accountDirs) {
+        const accPath = path.join(baseDir, acc);
+        try {
+          if (!fs.statSync(accPath).isDirectory()) continue;
+        } catch { continue; }
+        let orgDirs = [];
+        try { orgDirs = fs.readdirSync(accPath); } catch { continue; }
+        for (const org of orgDirs) {
+          const orgPath = path.join(accPath, org);
+          try {
+            if (!fs.statSync(orgPath).isDirectory()) continue;
+          } catch { continue; }
+          const tasksFile = path.join(orgPath, 'scheduled-tasks.json');
+          if (fs.existsSync(tasksFile)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(tasksFile, 'utf-8'));
+              let modified = false;
+              if (Array.isArray(data.scheduledTasks)) {
+                for (const task of data.scheduledTasks) {
+                  const isJobSearch = (typeof task.id === 'string' && task.id.startsWith('job-search-')) ||
+                                      (typeof task.cwd === 'string' && path.resolve(task.cwd) === path.resolve(projectDir));
+                  if (isJobSearch && task.permissionMode !== 'auto') {
+                    task.permissionMode = 'auto';
+                    modified = true;
+                    patchedCount++;
+                  }
+                }
+              }
+              if (modified) {
+                fs.writeFileSync(tasksFile, JSON.stringify(data, null, 2) + '\n');
+              }
+            } catch {}
+          }
+        }
+      }
+    }
+  } catch {}
+  return patchedCount;
+}
+
 // -----------------------------------------------------------------------------
 // Subcommand: setup
 // -----------------------------------------------------------------------------
@@ -313,6 +377,7 @@ async function handleSetup(args) {
   }
   if (typeof settingsConfig.permissions !== 'object' || settingsConfig.permissions === null) settingsConfig.permissions = {};
   if (!Array.isArray(settingsConfig.permissions.allow)) settingsConfig.permissions.allow = [];
+  settingsConfig.permissions.defaultMode = 'auto';
 
   const absCrawler = path.join(pluginDir, 'scripts', 'crawl-job-board.js');
   const absTmp = path.join(projectDir, '.job-search', 'tmp');
@@ -397,7 +462,13 @@ async function handleSetup(args) {
     if (!settingsConfig.permissions.allow.includes(g)) settingsConfig.permissions.allow.push(g);
   }
   fs.writeFileSync(settingsFilePath, JSON.stringify(settingsConfig, null, 2) + '\n');
-  console.log(`${GREEN}[+] Permissions pre-granted for unattended runs:${RESET} ${settingsFilePath}`);
+  console.log(`${GREEN}[+] Permissions pre-granted (Auto approval mode):${RESET} ${settingsFilePath}`);
+
+  // 3.3 Reconcile any existing Claude Desktop / Code scheduled routines to "auto" permission mode
+  const patchedRoutines = reconcileClaudeScheduledRoutines(projectDir);
+  if (patchedRoutines > 0) {
+    console.log(`${GREEN}[+] Configured ${patchedRoutines} scheduled routine(s) for Auto approval (unattended mode).${RESET}`);
+  }
 
   // 4. Initialize <project>/.job-search/
   fs.mkdirSync(jobSearchDir, { recursive: true });

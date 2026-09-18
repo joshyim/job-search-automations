@@ -198,6 +198,7 @@ assert_dir_exists "$PROJECT_DIR/.job-search/tmp" ".job-search/tmp/ directory cre
 
 # Verify expanded permissions in .claude/settings.json
 CLI_SETTINGS="$(cat "$PROJECT_DIR/.claude/settings.json")"
+assert_contains "$CLI_SETTINGS" '"defaultMode": "auto"' ".claude/settings.json contains permissions.defaultMode = auto"
 assert_contains "$CLI_SETTINGS" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json contains mkdir .job-search/tmp* permission (PRO-32)"
 assert_contains "$CLI_SETTINGS" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json contains rm -rf ./.job-search/tmp* permission (PRO-32)"
 assert_contains "$CLI_SETTINGS" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json contains rm -rf .job-search/tmp* permission (PRO-32)"

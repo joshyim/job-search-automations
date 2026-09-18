@@ -289,6 +289,13 @@ else
   fail "installation-steps.md missing Weekly Digest anti-hallucination guardrail"
 fi
 
+if grep -qi "Auto Approval" "$PLUGIN_ROOT/installation-steps.md" && \
+   grep -q 'permissionMode: "auto"' "$PLUGIN_ROOT/installation-steps.md"; then
+  pass "installation-steps.md mandates Auto approval mode for canonical routines"
+else
+  fail "installation-steps.md missing Auto approval mode instructions"
+fi
+
 
 # ------------------------------------------------------------------------------
 # Story 5: Claude Code & Cowork Manifests Conformance
@@ -310,6 +317,13 @@ if grep -qi "git" "$PLUGIN_ROOT/CLAUDE.md" && \
   pass "CLAUDE.md explicitly defines runtime file layout and forbids searching for git / root package files (PRO-31)"
 else
   fail "CLAUDE.md missing explicit runtime file layout rules (PRO-31)"
+fi
+
+if grep -qi "Mandatory Auto Approval for Routines" "$PLUGIN_ROOT/CLAUDE.md" && \
+   grep -q 'permissionMode: "auto"' "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md mandates Auto approval mode for scheduled routines"
+else
+  fail "CLAUDE.md missing Auto approval mode instructions"
 fi
 
 assert_file_exists "$PLUGIN_ROOT/.claude-plugin/marketplace.json" ".claude-plugin/marketplace.json exists"
