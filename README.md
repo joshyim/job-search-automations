@@ -50,58 +50,80 @@ job-search-automation/
 
 ---
 
-## Quickstart: Claude Desktop (Claude Code Mode)
+## Quickstart & Setup
 
-The simplest way to use this plugin is inside the **Claude Desktop App (Claude Code mode)**:
-
-1. Open your project folder in **Claude Desktop** and select **Claude Code** mode.
-2. Tell Claude:
-   > *"Set up job search automation with my resume at /path/to/resume.pdf"*
-3. Tell Claude what roles or companies to target:
-   > *"Find companies hiring Staff Product Managers in San Francisco or Remote"*
-
-> [!NOTE]
-> **Zero-Configuration & Private**: Setup automatically installs required Node dependencies and compiles the local database server (`packages/job-search-db`). All pipeline data and your resume remain 100% private in your project workspace (`<selected-directory>/.job-search/`). No browser downloads or cloud databases required.
-
----
-
-## Quickstart: Claude Code CLI
-
-If you use the **Claude Code CLI**, install it directly via the plugin marketplace:
-
-```text
-/plugin marketplace add personal-automation/job-search-automations
-/plugin install job-search-automation@job-search-automations
-```
-
-Then tell Claude:
-> *"Set up job search automation with my resume at /path/to/resume.pdf"*
-
----
-
-## Installation Methods
+Follow these 4 high-level steps to get your automated job search pipeline running with your AI assistant (Claude Code, Claude Desktop, or Codex).
 
 > [!TIP]
-> For the comprehensive, multi-harness setup guide (including Codex, Claude Code, and ChatGPT instructions, CLI flags, and cloud mode setup), see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md).
+> For the comprehensive technical reference, multi-harness guides (Claude Code, Codex, ChatGPT), CLI flags, cloud mode setup, and detailed LLM intake instructions, see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automation/installation-steps.md).
 
-### Zero-Clone Setup via `npx` [Recommended]
-
-Install directly without cloning the repository into your workspace:
+### Step 1: Install the Plugin via `npx`
+Run the zero-clone installer directly in your workspace terminal without cloning the repository or polluting your project directory:
 
 ```bash
 npx -y github:joshyim/job-search-automations setup
 ```
 
+- Fetches directly from GitHub into a temporary cache and installs the pre-compiled plugin into `<selected-directory>/.claude/plugins/job-search-automation/`.
+- Scaffolds your private workspace in `<selected-directory>/.job-search/` with a local SQLite database (`job-search.sqlite`), schema, and default scoring rubric.
+- Configures `<selected-directory>/.mcp.json` and `<selected-directory>/.claude/launch.json`.
+- Pre-grants permissions in `<selected-directory>/.claude/settings.json` (`permissionMode: "auto"`) so routine crawlers run unattended.
 
-- Fetches directly from GitHub into a temporary cache without polluting your workspace with source code or git history.
-- Copies runtime-necessary files into `<selected-directory>/.claude/plugins/job-search-automation/`.
-- Configures `<selected-directory>/.mcp.json` with relative paths.
-- Configures `<selected-directory>/.claude/launch.json` for Claude Desktop web preview.
-- Pre-grants permissions in `<selected-directory>/.claude/settings.json` for unattended runs.
-- Conforms strictly to the Agent Plugins specification with **zero symlinks**.
-- Stores data and configuration self-contained inside `<selected-directory>/.job-search/` (`job-search.sqlite`, `resume.pdf`, `config.json`).
+> **Prompt for your LLM:**
+> ```text
+> I want to install the job search automation plugin. Run 'npx -y github:joshyim/job-search-automations setup' in this workspace to set up the plugin, database, and routine permissions.
+> ```
+
+---
+
+### Step 2: Restart Your Harness to Mount MCP & Skills
+After installation completes, restart your agent harness (Claude Desktop, Claude Code CLI, or Codex) so it reloads its environment and mounts the new MCP server and skills.
+
+- Launches the `job-search-db` stdio MCP server for database operations.
+- Registers the 6 declarative job search skills (`company-search`, `title-discovery`, `job-search-crawl`, `job-search-assess`, `job-search-lead-gen`, `pipeline-diagram`).
+
+> **Prompt for your LLM:**
+> ```text
+> Check that the job-search-db MCP tools and skills are loaded, and verify the workspace database connection using select_workspace.
+> ```
+
+---
+
+### Step 3: Activate Routines & Configure Auto Permissions
+Open your harness's routine manager (Claude Desktop sidebar under **Scheduled**, `claude.ai/code/routines`, or using `/schedule`), activate the 4 canonical routines, and ensure they have **Auto** approval permissions so they run unattended without stalling:
+
+1. **Daily Company Search** (`company-search` at 8:00 PM)
+2. **Daily Job Title Search** (`title-discovery` at 9:00 PM)
+3. **Daily Job Crawl** (`job-search-crawl` at 6:00 AM)
+4. **Daily Job Evaluation** (`job-search-assess` at 7:00 AM)
+
+*Model Recommendation*: Configure routines with **Sonnet-class** (Claude Code / Desktop) or **Luna-class** (OpenAI / Codex) models for optimal cost and performance.
+
+> **Prompt for your LLM:**
+> ```text
+> Help me activate the 4 canonical job search routines. Make sure they are scheduled with Auto approval mode and use Sonnet-class or Luna-class models so they run unattended without stalling.
+> ```
+
+---
+
+### Step 4: Complete Initial Profile Setup & Intake
+Finish setup by providing your resume and having your AI assistant guide you through your initial preferences:
+
+- **Resume**: Provide the file path to your resume PDF or copy it to `<selected-directory>/.job-search/resume.pdf`.
+- **Target Companies**: Specify companies you want to track, and any companies or agencies to exclude.
+- **Job Titles**: Specify role titles to search for, along with negative patterns to exclude (e.g., exclude "Junior", "Sales", or "Intern").
+- **Core Skills**: Identify your core skills and categorize them into must-haves (P1) vs. nice-to-haves (P2).
+- **Scoring Rubric**: Review the default rubric dimensions and customize criteria weights to match your search priorities.
+
+> **Prompt for your LLM:**
+> ```text
+> Here is my resume at [path/to/resume.pdf]. Please ingest it, and guide me through the initial job search setup: target companies, job titles to search/exclude, core skills, and scoring rubric preferences.
+> ```
+
+---
 
 #### Cloud Mode (Neon PostgreSQL)
+To use cloud storage instead of local SQLite:
 ```bash
 npx -y github:joshyim/job-search-automations setup --mode neon --resume /path/to/your/resume.pdf --neon-connection-string "postgres://..." -y
 ```

@@ -7,6 +7,7 @@
   "plugins": [
     {
       "name": "job-search-automation",
+      "version": "0.1.0",
       "description": "Skill-based automated job search pipeline with company discovery, career site scraping, and resume scoring.",
       "source": {
         "source": "git-subdir",

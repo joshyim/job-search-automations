@@ -1,6 +1,6 @@
-# Job Search Automation: Installation & Routine Setup
+# Job Search Automation: Installation, Configuration & LLM Onboarding Guide
 
-Comprehensive, harness-agnostic guide for installing, configuring, and scheduling the Job Search Automation plugin. This guide serves **Codex**, **Claude Code (Desktop & CLI)**, **ChatGPT**, and all **Agent Plugins v1** compliant harnesses.
+Comprehensive, harness-agnostic guide for installing, configuring, and running the Job Search Automation plugin. This guide serves both human users and AI agent assistants (**Claude Desktop & Code**, **Codex**, **ChatGPT**, and all **Agent Plugins v1** compliant harnesses), providing detailed technical references and step-by-step onboarding interview protocols.
 
 ---
 
@@ -14,15 +14,15 @@ Comprehensive, harness-agnostic guide for installing, configuring, and schedulin
 
 ---
 
-## 2. Universal Zero-Clone Installation via `npx`
+## Step 1: Universal Zero-Clone Installation via `npx`
 
-The recommended installation method executes directly from GitHub in a temporary cache without cloning source code or git history into your workspace:
+The plugin installs directly from GitHub into a temporary cache without cloning source code or git history into your workspace:
 
 ```bash
 npx -y github:joshyim/job-search-automations setup
 ```
 
-Run this command inside your project workspace. It automatically initializes the `.job-search/` workspace, pre-compiles and installs the plugin into `.claude/plugins/job-search-automation/`, configures `.mcp.json` and `.claude/launch.json`, and grants permissions.
+Run this command inside your target project workspace. It initializes the `.job-search/` workspace, pre-compiles and installs the plugin into `.claude/plugins/job-search-automation/`, configures `.mcp.json` and `.claude/launch.json`, and pre-grants unattended permissions in `.claude/settings.json`.
 
 ### Setup Options & Flags
 
@@ -52,7 +52,7 @@ npx -y github:joshyim/job-search-automations setup \
 
 ### What Setup Scaffolds
 
-Setup automatically scaffolds a clean, self-contained architecture inside your selected workspace:
+Setup automatically establishes a clean, self-contained three-component architecture inside your workspace:
 
 1. **Persistent Workspace Data (`<workspace>/.job-search/`)**:
    - `job-search.sqlite`: Local SQLite database (initialized with schema, indices, and default scoring rubric).
@@ -68,67 +68,70 @@ Setup automatically scaffolds a clean, self-contained architecture inside your s
    - Configured with plugin-relative paths to launch the `job-search-db` stdio MCP server.
 4. **Desktop & Agent Configuration**:
    - `<workspace>/.claude/launch.json`: Claude Desktop web preview entry for the local UI dashboard.
-   - `<workspace>/.claude/settings.json`: Pre-configures `"defaultMode": "auto"` and pre-grants permissions for unattended runs (crawler script execution, scoped read/write in `.job-search/**`, all `mcp__job-search-db__*` tools).
+   - `<workspace>/.claude/settings.json`: Pre-configures `"defaultMode": "auto"` and pre-grants permissions for unattended runs (crawler script execution, scoped read/write in `.job-search/**`, all `mcp__job-search-db__*` tools, and web fetch fallbacks).
+
+> **LLM Execution Directive:**
+> When asked to install the plugin, execute `npx -y github:joshyim/job-search-automations setup` in the current workspace. Confirm to the user that plugin packages, workspace SQLite database, and routine permissions have been scaffolded. Remind the user that a restart of the harness is required next.
 
 ---
 
-## 3. Harness-Specific Integration Guides
+## Step 2: Harness Restart & System Verification
 
-### Claude Code (Desktop App & CLI)
+### Why a Restart is Required
+Agent harnesses (Claude Desktop, Claude Code CLI, Codex) parse `.mcp.json` and register plugin skills during session initialization. After running the installation command, the host session must be reloaded or restarted so that:
+- The stdio connection to `packages/job-search-db/scripts/start.js` is established.
+- The 6 specification-conformant skills in `skills/` are indexed into the agent's available toolset.
 
-1. Open your workspace directory in Claude Desktop or run `claude` in your terminal inside the workspace.
-2. Run the zero-clone setup command shown above.
-3. Restart your Claude Code session to load MCP tools and skills.
-4. Access the UI dashboard directly via Claude Desktop web preview (`job-search-ui`) or run:
-   ```bash
-   node .claude/plugins/job-search-automation/packages/job-search-ui/scripts/start.js
-   ```
+### Restart Instructions by Harness
+- **Claude Desktop**: Restart the Claude Desktop application or reopen the project workspace folder.
+- **Claude Code CLI**: Exit your current session (`Ctrl+C` or `/exit`) and re-launch `claude` in your workspace directory.
+- **Codex**: Reload the workspace window or restart the agent daemon to reload `mcp.json`.
 
-### Codex & Agent Plugins v1 Conformant Hosts
+### MCP Tools Verification
+Verify that the `job-search-db` MCP server is active by calling `select_workspace` or listing available tools:
 
-1. The plugin contains a specification-compliant `plugin.json` at the plugin root and portable `mcp.json`:
-   ```json
-   {
-     "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-     "mcpServers": {
-       "job-search-db": {
-         "type": "stdio",
-         "command": "node",
-         "args": ["${PLUGIN_ROOT}/packages/job-search-db/scripts/start.js"]
-       }
-     }
-   }
-   ```
-2. The host agent discovers and registers the 6 skills under `skills/` and launches the database MCP server using standard stdio.
-3. The plugin operates with **zero symlinks**, ensuring full compatibility with sandboxed and containerized environments.
+| MCP Tool | Category | Operational Purpose |
+| :--- | :--- | :--- |
+| `select_workspace` | Workspace | Validates directory path, detects mode, and verifies database connectivity |
+| `list_companies` | Companies | Lists all tracked target employers and crawl statuses |
+| `add_company` | Companies | Inserts a new hiring employer with its careers page URL |
+| `upsert_company` | Companies | Updates or adds company records and exclusion flags |
+| `update_company_crawl_status` | Companies | Updates timestamp and status of last crawl pass |
+| `list_title_patterns` | Titles | Lists positive include and negative exclude title filters |
+| `add_title_pattern` | Titles | Adds a title matching or exclusion pattern |
+| `list_skills` | Skills | Lists tracked candidate skills and weighting |
+| `set_skill_weight` | Skills | Configures skill priority (P1 must-have vs P2 preferred) |
+| `get_scoring_rubric` | Rubric | Retrieves current rubric dimensions and weight breakdown |
+| `upsert_rubric_dimension` | Rubric | Updates or creates a scoring rubric evaluation dimension |
+| `get_batch` | Pipeline | Pulls least-recently-searched companies for crawl runs |
+| `get_pending_queue` | Pipeline | Pulls enqueued job postings awaiting assessment |
+| `update_queue_status` | Pipeline | Marks postings as evaluated, skipped, or failed |
+| `add_candidate` | Candidates | Records scored job match (always default to status `'new'`) |
+| `list_candidates` | Candidates | Lists scored matches with rubric breakdowns |
+| `log_run` & `get_run_logs` | Telemetry | Records operational logs and metrics across routine runs |
 
-### ChatGPT & Generic MCP Clients
-
-Point your MCP host configuration to run the pre-built MCP database server:
-```json
-{
-  "mcpServers": {
-    "job-search-db": {
-      "command": "node",
-      "args": ["<path-to-workspace>/.claude/plugins/job-search-automation/packages/job-search-db/scripts/start.js"]
-    }
-  }
-}
-```
+### Skills Verification
+Verify that the 6 skills are registered:
+1. `company-search`: Discovers hiring companies across YC, BuiltIn, Wellfound, and LinkedIn.
+2. `title-discovery`: Uncovers title variants and patterns matching candidate skills.
+3. `job-search-crawl`: Crawls company career pages and queues matching postings.
+4. `job-search-assess`: Scores pending postings against resume and rubric.
+5. `job-search-lead-gen`: End-to-end orchestrator combining crawl and assessment.
+6. `pipeline-diagram`: Generates Mermaid pipeline architecture diagrams.
 
 ---
 
-## 4. Canonical Routines & Recurring Scheduling
+## Step 3: Canonical Routines Activation & Auto Permissions
 
-Automate your job search on a recurring cadence using your agent harness's scheduling mechanism (e.g., Claude Code's cloud routines or `/schedule` command). 
+Recurring routines automate discovery, crawling, and assessment on an unattended daily cadence.
 
 > [!CRITICAL]
-> **Anti-Hallucination Guardrail: No "Weekly Digest" Routine**
-> There is **no Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest. Only configure the 4 canonical routines defined below.
+> **Strict Anti-Hallucination Guardrail: No "Weekly Digest" Routine**
+> There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest. Only configure the 4 canonical routines defined below.
 
 > [!IMPORTANT]
 > **Mandatory Auto Approval for Canonical Routines**
-> All 4 canonical routines are designed to run unattended in the background. They must always be configured with **Auto** approval (`permissionMode: "auto"`). In Claude Desktop's sidebar under **Scheduled**, routines should display as `[Schedule] · Auto` (e.g., `6:00 AM every day · Auto`). Never leave them in "Manual" approval mode, as unapproved prompts will stall unattended execution.
+> All 4 canonical routines run unattended in the background. They must always be configured with **Auto** approval (`permissionMode: "auto"`). In Claude Desktop under **Scheduled**, routines should display as `[Schedule] · Auto` (e.g., `6:00 AM every day · Auto`). Never leave them in "Manual" approval mode, as unapproved prompts will stall unattended execution.
 
 > [!TIP]
 > **Recommended Model Classes for Routines**
@@ -139,16 +142,12 @@ Automate your job search on a recurring cadence using your agent harness's sched
 
 ### The 4 Canonical Routines
 
-The pipeline is organized into four distinct operational stages:
-
 | Routine # | Routine Name | Target Skill | Recommended Cadence | Recommended Model Class | Unattended Limits |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **1** | **Daily Company Search** | `company-search` | Daily 8:00 PM (`0 20 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Max 3–5 new qualified companies; budget 30–40 messages |
 | **2** | **Daily Job Title Search** | `title-discovery` | Daily 9:00 PM (`0 21 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Max 1–3 new patterns; budget 25–35 messages |
 | **3** | **Daily Job Crawl** | `job-search-crawl` / `job-search-lead-gen` | Daily 6:00 AM (`0 6 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages |
 | **4** | **Daily Job Evaluation** | `job-search-assess` | Daily 7:00 AM (`0 7 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages |
-
----
 
 ### Routine Configuration & Prompts
 
@@ -184,34 +183,101 @@ Pulls pending listings from the crawl queue, validates active status, scores aga
   /schedule CronExpression="0 7 * * *" Prompt="Run job-search-assess for up to 5 pending postings from get_pending_queue. Score against candidate resume and scoring rubric, and record each scored candidate via add_candidate with status 'new'. Complete within 45 messages."
   ```
 
----
-
-## 5. Managing Active Cloud & Desktop Routines
-
-Claude Code Routines run in the cloud on Anthropic infrastructure or locally in Claude Desktop. They can be reviewed or edited at **[claude.ai/code/routines](https://claude.ai/code/routines)** or under the **Scheduled** section in the Claude Desktop sidebar.
-
-### Auto Approval Configuration & Verification
-- **Automatic Setup**: The setup command (`npx -y github:joshyim/job-search-automations setup`) automatically pre-configures `permissions.defaultMode: "auto"` in `.claude/settings.json` and reconciles local routine definitions in `scheduled-tasks.json` to Auto mode.
-- **Verifying in Claude Desktop**: In the Claude Desktop sidebar under **Scheduled**, verify that each routine badge reads `[Schedule] · Auto` (e.g. `6:00 AM every day · Auto`). If any routine displays `· Manual`, click the routine, open its settings, and set the mode selector to **Auto**.
-
-### Model Class Selection & Verification
-- **Recommended Tier**: Verify that routines are configured with a **Sonnet-class** model (Claude) or **Luna-class** model (OpenAI). In Claude Desktop, click each routine under **Scheduled**, open its settings, and choose Sonnet from the model dropdown. Avoid leaving it unset or defaulting to Opus.
-
-### Remediation for Existing Sessions
-If Claude Code previously auto-configured routines:
-1. **Delete "Weekly digest"**: Open `claude.ai/code/routines` or run `/schedule` in CLI and remove the non-existent weekly digest routine.
-2. **Add "Daily Company Search"**: Create the daily 8:00 PM routine using the prompt in Section 4.
-3. **Add "Daily Job Title Search"**: Create the daily 9:00 PM routine using the prompt in Section 4.
-4. **Verify Crawl & Evaluation**: Ensure the Daily Crawl (6:00 AM) and Daily Evaluation (7:00 AM) have explicit batch limits (3 companies, 5 postings) and message budgets (40–50 messages).
-5. **Set Approval to Auto**: Confirm all active routines have Auto approval enabled.
+### Managing & Verifying Routines
+- **Auto Approval Verification**: In Claude Desktop under **Scheduled** or at [claude.ai/code/routines](https://claude.ai/code/routines), verify that every routine displays `· Auto`. If any routine displays `· Manual`, open its settings and switch it to **Auto**.
+- **Model Class Verification**: Check that each routine uses **Sonnet** (Claude) or **Luna** (OpenAI).
+- **Remediation**: If an existing setup contains a "Weekly digest" routine, delete it immediately.
 
 ---
 
-## 6. Ongoing Maintenance
+## Step 4: LLM Operational Guide: Conversational Profile Intake & Initial Setup
+
+This section outlines the exact conversational workflow and operational protocol that the AI assistant (LLM) must follow to onboard the user after installation and restart.
+
+### 1. Resume Ingestion & Background Extraction
+1. **Prompt the User**:
+   > *"Please provide the path to your resume PDF (e.g., `~/Documents/resume.pdf` or drag-and-drop it into the chat)."*
+2. **Execute Ingestion**:
+   - If a path is provided, copy the file to `<workspace>/.job-search/resume.pdf` or run:
+     ```bash
+     npx -y github:joshyim/job-search-automations update-resume "<path-to-resume>" --directory "<path-to-workspace>"
+     ```
+3. **Candidate Profile Extraction**:
+   - Extract key candidate attributes: seniority level (e.g., Staff, Principal, Senior), domain specialties (e.g., Fintech, Developer Tools, Distributed Systems), and core technical skills.
+
+### 2. Target Companies & Exclusions Setup
+1. **Prompt the User**:
+   > *"What target companies would you like to track first? Are there any specific companies, staffing agencies, or industries you would like to exclude or avoid?"*
+2. **Register Target Companies**:
+   - For each target company, locate the official careers page URL (e.g. Greenhouse, Lever, Ashby, or company careers site).
+   - Call MCP tool `add_company`:
+     ```json
+     {
+       "name": "Stripe",
+       "careers_url": "https://stripe.com/jobs"
+     }
+     ```
+3. **Register Excluded Companies**:
+   - For excluded companies or staffing agencies, insert them with `is_excluded: 1` or add notes so they are skipped by `company-search` and crawler routines.
+
+### 3. Job Title Patterns: Inclusions & Exclusions
+1. **Propose Positive Patterns**:
+   - Based on candidate seniority and resume, suggest 3–5 positive title patterns:
+     > *"Based on your background, I suggest tracking titles like: `Staff Product Manager`, `Principal Product Manager`, and `Lead Product Manager`. Do these match what you're targeting?"*
+   - Register confirmed positive patterns via `add_title_pattern`:
+     ```json
+     {
+       "pattern": "Staff Product Manager",
+       "pattern_type": "include"
+     }
+     ```
+2. **Identify Exclusion Patterns**:
+   - Ask the user for negative keywords or roles outside their interest (e.g., `Junior`, `Associate`, `Sales Engineer`, `Intern`):
+     > *"Are there any titles or keywords you want to strictly filter out (for example: `Junior`, `Contract`, `Sales Engineer`)?"*
+   - Register negative patterns via `add_title_pattern`:
+     ```json
+     {
+       "pattern": "Junior",
+       "pattern_type": "exclude"
+     }
+     ```
+
+### 4. Core Skills Prioritization (P1 vs. P2)
+1. **Identify Key Skills**:
+   - Highlight candidate's top 5–8 skills identified from the resume.
+2. **Prioritize with User**:
+   - Ask user to classify them into:
+     - **P1 (Must-Have)**: Critical skills where a posting without them should score low or fail assessment.
+     - **P2 (Preferred/Bonus)**: Nice-to-have skills that boost score but are not strictly required.
+3. **Register Weights**:
+   - Use `set_skill_weight` to assign priority levels (`P1` or `P2`).
+
+### 5. Scoring Rubric Alignment
+1. **Retrieve Current Rubric**:
+   - Call `get_scoring_rubric` to inspect default dimensions and weights (e.g., Domain Fit: 30%, Technical Scope: 30%, Leadership: 20%, Growth: 20%).
+2. **Consult the User**:
+   > *"Here is your initial candidate scoring rubric:
+   > - Domain Fit (30%)
+   > - Technical Depth & Architecture (30%)
+   > - Leadership & Strategic Scope (20%)
+   > - Career Trajectory (20%)
+   > Would you like to adjust these weights or add any specific criteria (e.g. remote work flexibility, startup stage)?"*
+3. **Update Rubric Dimensions**:
+   - Call `upsert_rubric_dimension` to save any customized dimension weights or scoring criteria.
+
+### 6. Launch Web Dashboard for Visual Review
+Inform the user that they can visually inspect and modify their target companies, title rules, and rubric sliders via the local dashboard:
+```bash
+node .claude/plugins/job-search-automation/packages/job-search-ui/scripts/start.js
+```
+The dashboard binds to `http://localhost:3847` (with automatic port-increment fallback if 3847 is busy). In Claude Desktop, users can also open the `job-search-ui` entry via the web preview launcher.
+
+---
+
+## Step 5: Ongoing Maintenance
 
 ### Updating Your Resume
-
-When you update your resume, you do not need to re-run full setup. Use the zero-clone `update-resume` command:
+When you update your resume, you do not need to re-run full setup. Use the fast-path `update-resume` command:
 
 ```bash
 npx -y github:joshyim/job-search-automations update-resume "<path-to-new-resume.pdf>" --directory "<path-to-workspace>"
@@ -222,7 +288,6 @@ npx -y github:joshyim/job-search-automations update-resume "<path-to-new-resume.
 - Subsequent evaluation runs immediately score postings against the updated resume.
 
 ### Clean Uninstallation
-
 To remove the installed plugin code while preserving your historical search data, candidate scores, and SQLite database:
 
 ```bash
@@ -233,29 +298,3 @@ npx -y github:joshyim/job-search-automations uninstall --directory "<path-to-wor
 - Cleans up `job-search-db` from `<workspace>/.mcp.json`.
 - Removes `job-search-ui` from `<workspace>/.claude/launch.json`.
 - Preserves `<workspace>/.job-search/` (pass `--purge-data` if you wish to delete user data as well).
-
----
-
-## 7. Verification & Local Web Dashboard
-
-### Launching the Dashboard
-
-Inspect pipeline metrics, adjust rubric dimension weights, and review scored candidates:
-```bash
-# In installed project workspace:
-node .claude/plugins/job-search-automation/packages/job-search-ui/scripts/start.js
-
-# In plugin development repository:
-npm run ui
-```
-The dashboard binds to `http://localhost:3847` (with automatic port-increment fallback if 3847 is in use).
-
-### Verifying MCP Tools
-
-From your agent harness, verify that the following MCP tools are active:
-- `select_workspace`: Validates workspace path and database connectivity.
-- `list_companies` & `add_company`: Target company management.
-- `list_title_patterns` & `add_title_pattern`: Title keyword rules.
-- `get_batch` & `get_pending_queue`: Crawl queue coordination.
-- `get_scoring_rubric` & `upsert_rubric_dimension`: Dynamic rubric configuration.
-- `get_candidates` & `add_candidate`: Scored candidate pipeline.
