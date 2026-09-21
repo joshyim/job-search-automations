@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "job-search-db": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/packages/job-search-db/scripts/start.js"
+      ]
+    }
+  }
+}

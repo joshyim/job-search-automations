@@ -1,0 +1,12 @@
+{
+  "name": "job-search-automations",
+  "version": "0.1.0",
+  "description": "Skill-based automated job search pipeline with company discovery, career site scraping, and resume scoring.",
+  "author": {
+    "name": "Josh Yim",
+    "email": "josh@joshyim.com",
+    "url": "https://www.joshyim.com"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/joshyim/job-search-automations"
+}
