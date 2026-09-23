@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { WorkspaceManager } from '../workspace.js';
+import { httpUrlSchema } from './validation.js';
 
 export function registerCompanyTools(server: McpServer, workspaceManager: WorkspaceManager): void {
   server.tool(
@@ -34,7 +35,7 @@ export function registerCompanyTools(server: McpServer, workspaceManager: Worksp
       selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
       directory: z.string().optional().describe('Alias for selected_directory'),
       name: z.string().describe('The name of the target company'),
-      careers_url: z.string().describe('The careers / jobs URL for the company'),
+      careers_url: httpUrlSchema.describe('The careers / jobs URL for the company'),
       notes: z.string().optional().describe('Optional notes about the company or industry'),
       last_searched_at: z.string().optional().describe('Optional ISO timestamp of when company was last searched'),
     },
@@ -87,7 +88,7 @@ export function registerCompanyTools(server: McpServer, workspaceManager: Worksp
       directory: z.string().optional().describe('Alias for selected_directory'),
       current_name: z.string().describe('The current name of the company to update'),
       name: z.string().optional().describe('New name for the company'),
-      careers_url: z.string().optional().describe('New careers / jobs URL'),
+      careers_url: httpUrlSchema.optional().describe('New careers / jobs URL'),
       is_excluded: z.boolean().optional().describe('Toggle excluded status (true/false)'),
       notes: z.string().optional().describe('Notes about the company'),
       last_searched_at: z.string().optional().describe('ISO timestamp of when company was last searched'),

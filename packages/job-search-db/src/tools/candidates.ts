@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { CandidateStatus } from '../adapters/types.js';
 import { WorkspaceManager } from '../workspace.js';
+import { httpUrlSchema } from './validation.js';
 
 export function registerCandidateTools(server: McpServer, workspaceManager: WorkspaceManager): void {
   server.tool(
@@ -12,7 +13,7 @@ export function registerCandidateTools(server: McpServer, workspaceManager: Work
       directory: z.string().optional().describe('Alias for selected_directory'),
       company_name: z.string().describe('Company name'),
       job_title: z.string().describe('Job title'),
-      url: z.string().describe('Job posting URL'),
+      url: httpUrlSchema.describe('Job posting URL'),
       location: z.string().optional().describe('Job location (e.g. Remote, San Francisco, CA)'),
       score: z.number().optional().describe('Overall match score (0-10 or 0-100)'),
       breakdown: z.record(z.number()).optional().describe('Score breakdown by rubric dimension'),
@@ -50,7 +51,7 @@ export function registerCandidateTools(server: McpServer, workspaceManager: Work
     {
       selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
       directory: z.string().optional().describe('Alias for selected_directory'),
-      url: z.string().describe('The URL of the candidate to update'),
+      url: httpUrlSchema.describe('The URL of the candidate to update'),
       status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).describe('New application status'),
       notes: z.string().optional().describe('Optional notes about the status update'),
     },

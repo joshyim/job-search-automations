@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { WorkspaceManager } from '../workspace.js';
+import { httpUrlSchema } from './validation.js';
 
 export function registerQueueTools(server: McpServer, workspaceManager: WorkspaceManager): void {
   server.tool(
@@ -9,7 +10,7 @@ export function registerQueueTools(server: McpServer, workspaceManager: Workspac
     {
       selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
       directory: z.string().optional().describe('Alias for selected_directory'),
-      url: z.string().describe('The URL to check'),
+      url: httpUrlSchema.describe('The URL to check'),
     },
     async ({ selected_directory, directory, url }) => {
       try {
@@ -33,7 +34,7 @@ export function registerQueueTools(server: McpServer, workspaceManager: Workspac
     {
       selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
       directory: z.string().optional().describe('Alias for selected_directory'),
-      url: z.string().describe('The job posting URL'),
+      url: httpUrlSchema.describe('The job posting URL'),
       company_name: z.string().describe('The company offering the job'),
       notes: z.string().optional().describe('Optional notes about the posting'),
     },
@@ -110,7 +111,7 @@ export function registerQueueTools(server: McpServer, workspaceManager: Workspac
     {
       selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
       directory: z.string().optional().describe('Alias for selected_directory'),
-      url: z.string().describe('The URL to update'),
+      url: httpUrlSchema.describe('The URL to update'),
       status: z.enum(['pending', 'assessed', 'skipped']).describe('New status for the URL'),
       notes: z.string().optional().describe('Optional reason or assessment note'),
     },

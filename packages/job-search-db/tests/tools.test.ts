@@ -248,4 +248,37 @@ describe('MCP Tools Registration & Invocation', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('No workspace directory provided');
   });
+
+  it('validates URL parameters against non-HTTP schemes and malformed strings (PRO-58)', () => {
+    const server = new McpServer({ name: 'test-server', version: '0.1.0' });
+    const adapter = createMockAdapter();
+    const wm = createMockWorkspaceManager(adapter);
+    registerAllTools(server, wm);
+
+    const addCompanyTool = (server as any)._registeredTools['add_company'];
+    const careersUrlSchema = addCompanyTool.inputSchema.shape.careers_url;
+    expect(careersUrlSchema.safeParse('https://example.com/careers').success).toBe(true);
+    expect(careersUrlSchema.safeParse('http://example.com/jobs').success).toBe(true);
+    expect(careersUrlSchema.safeParse('javascript:alert(1)').success).toBe(false);
+    expect(careersUrlSchema.safeParse('file:///etc/passwd').success).toBe(false);
+    expect(careersUrlSchema.safeParse('data:text/html,<h1>test</h1>').success).toBe(false);
+    expect(careersUrlSchema.safeParse('not-a-url').success).toBe(false);
+
+    const updateCompanyTool = (server as any)._registeredTools['update_company'];
+    const updateCareersUrlSchema = updateCompanyTool.inputSchema.shape.careers_url;
+    expect(updateCareersUrlSchema.safeParse(undefined).success).toBe(true);
+    expect(updateCareersUrlSchema.safeParse('https://updated.com/jobs').success).toBe(true);
+    expect(updateCareersUrlSchema.safeParse('ftp://bad.com').success).toBe(false);
+
+    const addToQueueTool = (server as any)._registeredTools['add_to_queue'];
+    const queueUrlSchema = addToQueueTool.inputSchema.shape.url;
+    expect(queueUrlSchema.safeParse('https://jobs.example.com/123').success).toBe(true);
+    expect(queueUrlSchema.safeParse('file:///test').success).toBe(false);
+
+    const addCandidateTool = (server as any)._registeredTools['add_candidate'];
+    const candidateUrlSchema = addCandidateTool.inputSchema.shape.url;
+    expect(candidateUrlSchema.safeParse('https://jobs.example.com/posting').success).toBe(true);
+    expect(candidateUrlSchema.safeParse('javascript:steal()').success).toBe(false);
+  });
 });
+
