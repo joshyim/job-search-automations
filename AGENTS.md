@@ -14,7 +14,7 @@ When a user in Codex Desktop, Codex CLI, or ChatGPT Codex task asks to install, 
    - Data persists permanently in `<selected-directory>/.job-search/` (containing `job-search.sqlite`, `resume.pdf`, and `config.json`).
    - Do **NOT** ask about Neon database strings or storage modes unless the user explicitly requests Neon cloud mode. Local SQLite mode is the default zero-dependency mode.
    - Do **NOT** attempt to install Playwright or Chromium. The crawler runs zero-browser lightweight fetch with ATS APIs.
-   - For universal, multi-harness installation flags and details, refer to [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md).
+   - For universal, multi-harness installation flags and details, refer to [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md).
 
 > [!CRITICAL]
 > **NEVER run `git clone` to install this plugin.**
@@ -41,7 +41,7 @@ When a user in Codex Desktop, Codex CLI, or ChatGPT Codex task asks to install, 
    - Once setup reports completion, ask the user:
      > *"Your job search pipeline is ready! What job titles, locations, or target companies would you like to start with?"*
    - Save their preferences and offer to run their first search using `company-search` or `job-search-lead-gen`.
-   - If asked to set up routines or recurring schedules, follow the **Canonical Routines** defined below and in [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md). **NEVER create a "Weekly digest" routine.**
+   - If asked to set up routines or recurring schedules, follow the **Canonical Routines** defined below and in [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md). **NEVER create a "Weekly digest" routine.**
 
 ---
 

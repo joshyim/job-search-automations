@@ -1,5 +1,5 @@
 {
-  "name": "@personal-automation/job-search-db",
+  "name": "@agent-automations/job-search-db",
   "version": "0.1.0",
   "description": "MCP server with dual-mode data access (Local Markdown & Neon PostgreSQL) for job search pipeline",
   "type": "module",

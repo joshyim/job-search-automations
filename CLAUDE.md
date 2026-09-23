@@ -12,7 +12,7 @@ When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to inst
    - Do **NOT** warn about ephemeral cloud sandboxes. Claude Code connects directly to the user's workspace, and data persists permanently in `<selected-directory>/.job-search/` (containing `job-search.sqlite`, `resume.pdf`, and `config.json`).
    - Do **NOT** ask about Neon database strings or storage modes unless the user explicitly requests Neon cloud mode. Local SQLite mode is the default zero-dependency mode.
    - Do **NOT** attempt to install Playwright or Chromium. The crawler runs zero-browser lightweight fetch with ATS APIs.
-   - For universal, multi-harness installation flags and details, refer to [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md).
+   - For universal, multi-harness installation flags and details, refer to [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md).
 
 > [!CRITICAL]
 > **NEVER run `git clone` to install this plugin.**
@@ -39,7 +39,7 @@ When a user in Claude Desktop (Claude Code mode) or Claude Code CLI asks to inst
    - Once setup reports completion, ask the user:
      > *"Your job search pipeline is ready! What job titles, locations, or target companies would you like to start with?"*
    - Save their preferences and offer to run their first search using `company-search` or `job-search-lead-gen`.
-   - If asked to set up routines or recurring schedules, follow the **Canonical Routines** defined below and in [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md). **NEVER create a "Weekly digest" routine.**
+   - If asked to set up routines or recurring schedules, follow the **Canonical Routines** defined below and in [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md). **NEVER create a "Weekly digest" routine.**
 
 ## Runtime Architecture
 
@@ -112,7 +112,7 @@ In a user's project workspace after installation, the source repo and git histor
      - Title Discovery (`title-discovery`): Add at most 1–3 newly validated title patterns per scheduled run.
    - **Zero Browser Automation**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple `WebFetch`.
    - **Fast-Fail URLs**: If an ATS board is unreachable or a posting URL redirects/404s, immediately mark it skipped via `update_queue_status` and move to the next item. Never enter retry loops.
-   - **Strict Anti-Hallucination Guardrail (No Weekly Digest)**: There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest routine. Only configure the 4 canonical routines documented in [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md).
+   - **Strict Anti-Hallucination Guardrail (No Weekly Digest)**: There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest routine. Only configure the 4 canonical routines documented in [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md).
 9. **Candidate Status Ownership & Human-in-the-Loop Disposition**:
    - Automated assessment and crawler agents must **never** unilaterally set candidate status to `not_pursuing`, `closed`, `rejected`, `applied`, or any other disposition status.
    - When recording candidates via `add_candidate`, always record with `status: "new"`.
@@ -143,7 +143,7 @@ The local Web UI dashboard provides a visual interface for reviewing scored cand
 
 ## Canonical Routines & Recurring Scheduling
 
-When asked to configure routines or recurring background jobs, configure ONLY the four canonical routines below. See [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md) for full prompt templates, budgets, and cloud management steps.
+When asked to configure routines or recurring background jobs, configure ONLY the four canonical routines below. See [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md) for full prompt templates, budgets, and cloud management steps.
 
 1. **Daily Company Search** (`company-search`):
    - Schedule: Daily 8:00 PM (`0 20 * * *`)
@@ -178,7 +178,7 @@ npx -y github:joshyim/job-search-automations update-resume "<path-to-new-resume.
 
 ## Maintainer: Standalone Repo Synchronization & Publishing
 
-This plugin is developed and maintained inside the private `personal-automation` monorepo and published as a standalone public repository at [github.com/joshyim/job-search-automations](https://github.com/joshyim/job-search-automations).
+This plugin is developed and maintained inside the private `agent-automations` monorepo and published as a standalone public repository at [github.com/joshyim/job-search-automations](https://github.com/joshyim/job-search-automations).
 
 To ensure that internal or experimental work in the monorepo is not published prematurely, synchronization is **strictly on-demand** and performed via `scripts/sync-public.sh`.
 

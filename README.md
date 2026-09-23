@@ -32,7 +32,7 @@ You set the rules. Your AI does the hunting.
 Follow these 6 progressive steps to get your automated job search pipeline running with your AI assistant (GitHub Copilot, Claude Code, OpenAI Codex, Cursor, Windsurf, or any Agent Plugin standard harness).
 
 > [!TIP]
-> For the comprehensive technical reference, multi-harness guides (GitHub Copilot, Claude Code, Codex, ChatGPT), CLI flags, cloud mode setup, and detailed LLM intake instructions, see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md).
+> For the comprehensive technical reference, multi-harness guides (GitHub Copilot, Claude Code, Codex, ChatGPT), CLI flags, cloud mode setup, and detailed LLM intake instructions, see [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md).
 
 ### Step 1: Install the Plugin via `npx`
 
@@ -304,7 +304,7 @@ Included inside the plugin package per the Agent Plugins specification:
 Automate your job search on a recurring schedule using your agent harness's scheduling mechanism (e.g. Claude Code's `/schedule` command or cloud routines). Scheduled tasks run unattended, so prompts should include an explicit message budget and batch limit.
 
 > [!NOTE]
-> For complete routine configurations, prompt templates, and cloud routine management steps, see [installation-steps.md](file:///Users/joshyim/projects/personal-automation/job-search-automations/installation-steps.md). Note: there is **no Weekly Digest routine** in this repository.
+> For complete routine configurations, prompt templates, and cloud routine management steps, see [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md). Note: there is **no Weekly Digest routine** in this repository.
 >
 > **Recommended Model Classes**: Configure routines with **Sonnet-class** (Claude Code / Desktop), **Luna-class** (OpenAI / Codex), or **GPT-4o-mini / balanced tier** (GitHub Copilot) models. Avoid defaulting unattended recurring tasks to expensive flagship/frontier models (Opus).
 

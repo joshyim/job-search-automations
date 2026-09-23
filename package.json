@@ -1,5 +1,5 @@
 {
-  "name": "@personal-automation/job-search-automations",
+  "name": "@agent-automations/job-search-automations",
   "version": "0.1.0",
   "private": true,
   "type": "module",
