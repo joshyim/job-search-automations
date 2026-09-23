@@ -253,6 +253,56 @@ function updateCodexConfig(configTomlPath, projectDir, relativeStartJs) {
 }
 
 // -----------------------------------------------------------------------------
+// Security & Git Workspace Hardening Helpers (PRO-57)
+// -----------------------------------------------------------------------------
+
+function ensureInnerGitignore(jobSearchDir) {
+  const innerGitignore = path.join(jobSearchDir, '.gitignore');
+  const defaultInner = `# Ignore all private workspace data\n*\n!.gitignore\n`;
+  if (!fs.existsSync(innerGitignore)) {
+    fs.writeFileSync(innerGitignore, defaultInner, { mode: 0o600 });
+  } else {
+    // Do not overwrite stricter existing ignore rules
+    const content = fs.readFileSync(innerGitignore, 'utf-8');
+    if (!content.includes('*')) {
+      const privatePatterns = ['resume.pdf', 'config.json', 'job-search.sqlite*', 'tmp/'];
+      const toAdd = privatePatterns.filter((p) => !content.includes(p));
+      if (toAdd.length > 0) {
+        fs.appendFileSync(innerGitignore, `\n# Additional private workspace files\n${toAdd.join('\n')}\n`);
+      }
+    }
+  }
+  try {
+    fs.chmodSync(innerGitignore, 0o600);
+  } catch {}
+}
+
+function checkAlreadyTrackedFiles(projectDir, jobSearchDir) {
+  try {
+    const relJobSearch = path.relative(projectDir, jobSearchDir) || '.job-search';
+    const output = execFileSync('git', ['ls-files', relJobSearch], {
+      cwd: projectDir,
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    if (output) {
+      const trackedFiles = output.split('\n').filter(Boolean);
+      if (trackedFiles.length > 0) {
+        console.warn(`\n${YELLOW}${BOLD}[WARNING] Sensitive workspace file(s) already tracked by Git:${RESET}`);
+        for (const file of trackedFiles) {
+          console.warn(`  ${YELLOW}- ${file}${RESET}`);
+        }
+        console.warn(`${YELLOW}Git ignore rules will NOT automatically untrack files already in history.${RESET}`);
+        console.warn(`${YELLOW}To prevent accidental publication, untrack them by running:${RESET}`);
+        console.warn(`  ${BOLD}git rm --cached ${trackedFiles.join(' ')}${RESET}\n`);
+      }
+    }
+  } catch {
+    // Not a git repository or git command unavailable
+  }
+}
+
+// -----------------------------------------------------------------------------
 // Subcommand: setup
 // -----------------------------------------------------------------------------
 async function handleSetup(args) {
@@ -679,8 +729,15 @@ async function handleSetup(args) {
   }
 
   // 4. Initialize <project>/.job-search/
-  fs.mkdirSync(jobSearchDir, { recursive: true });
-  fs.mkdirSync(path.join(jobSearchDir, 'tmp'), { recursive: true });
+  fs.mkdirSync(jobSearchDir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(jobSearchDir, 0o700);
+  } catch {}
+  const tmpDir = path.join(jobSearchDir, 'tmp');
+  fs.mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(tmpDir, 0o700);
+  } catch {}
 
   // Handle resume copy
   if (resumePath) {
@@ -693,16 +750,19 @@ async function handleSetup(args) {
       console.warn(`${YELLOW}[WARNING] Resume does not have a .pdf extension. Downstream assessment skills expect PDF format.${RESET}`);
     }
     fs.copyFileSync(expResume, targetResume);
-    fs.chmodSync(targetResume, 0o644);
+    fs.chmodSync(targetResume, 0o600);
     console.log(`${GREEN}[+] Resume installed to:${RESET} ${targetResume}`);
   } else if (fs.existsSync(targetResume)) {
+    try {
+      fs.chmodSync(targetResume, 0o600);
+    } catch {}
     console.log(`${GREEN}[+] Existing resume preserved:${RESET} ${targetResume}`);
   } else {
     // Check for a local resume.pdf in the workspace root
     const localResume = path.join(projectDir, 'resume.pdf');
     if (fs.existsSync(localResume)) {
       fs.copyFileSync(localResume, targetResume);
-      fs.chmodSync(targetResume, 0o644);
+      fs.chmodSync(targetResume, 0o600);
       console.log(`${GREEN}[+] Auto-detected and installed local resume:${RESET} ${localResume}`);
     } else {
       console.log(`${YELLOW}[!] No resume provided yet.${RESET} Workspace scaffolding will proceed.`);
@@ -811,13 +871,24 @@ async function handleSetup(args) {
         ins.run('Seniority fit', 20, 'Misaligned seniority level', 'Adjacent seniority level', 'Matches target Staff/Principal IC level');
       }
       db.close();
+      try {
+        fs.chmodSync(targetSqlite, 0o600);
+      } catch {}
       console.log(`${GREEN}[+] SQLite schema initialized and seeded.${RESET}`);
     } else {
+      if (fs.existsSync(targetSqlite)) {
+        try {
+          fs.chmodSync(targetSqlite, 0o600);
+        } catch {}
+      }
       console.log(`${GREEN}[+] Existing SQLite database preserved:${RESET} ${targetSqlite}`);
     }
-
-    // Create .job-search/.gitignore
-    fs.writeFileSync(path.join(jobSearchDir, '.gitignore'), 'job-search.sqlite*\ntmp/\n');
+    if (fs.existsSync(`${targetSqlite}-wal`)) {
+      try { fs.chmodSync(`${targetSqlite}-wal`, 0o600); } catch {}
+    }
+    if (fs.existsSync(`${targetSqlite}-shm`)) {
+      try { fs.chmodSync(`${targetSqlite}-shm`, 0o600); } catch {}
+    }
   } else if (mode === 'neon') {
     if (neonConnStr && !mockMode) {
       if (process.platform === 'darwin') {
@@ -855,6 +926,9 @@ async function handleSetup(args) {
     }
   }
 
+  // Create/update inner .job-search/.gitignore in both storage modes (PRO-57)
+  ensureInnerGitignore(jobSearchDir);
+
   // Write config.json
   const configData = {
     $schema: 'https://json-schema.org/draft-07/schema#',
@@ -865,24 +939,35 @@ async function handleSetup(args) {
     updatedAt: new Date().toISOString(),
   };
   fs.writeFileSync(configFile, JSON.stringify(configData, null, 2) + '\n', { mode: 0o600 });
+  try {
+    fs.chmodSync(configFile, 0o600);
+  } catch {}
   console.log(`${GREEN}[+] Configuration written to:${RESET} ${configFile}`);
 
-  // 5. Append plugin directories to project .gitignore if git repo
+  // 5. Append workspace data directory and plugin directories to project .gitignore if git repo
   const projectGitignore = path.join(projectDir, '.gitignore');
-  const ignorePatterns = [];
+  const ignorePatterns = ['.job-search/'];
   if (isClaudeTarget) ignorePatterns.push('.claude/plugins/');
   if (isCodexTarget) ignorePatterns.push('.codex/plugins/');
   if (isStandardTarget || isCopilotTarget) ignorePatterns.push('.agents/plugins/');
 
   if (fs.existsSync(projectGitignore)) {
     const giContent = fs.readFileSync(projectGitignore, 'utf-8');
-    const toAdd = ignorePatterns.filter((pat) => !giContent.includes(pat));
+    const toAdd = ignorePatterns.filter((pat) => {
+      if (pat === '.job-search/' && (giContent.includes('.job-search/') || giContent.includes('.job-search'))) {
+        return false;
+      }
+      return !giContent.includes(pat);
+    });
     if (toAdd.length > 0) {
-      fs.appendFileSync(projectGitignore, `\n# Installed Agent Plugins\n${toAdd.join('\n')}\n`);
+      fs.appendFileSync(projectGitignore, `\n# Job Search Workspace and Plugins\n${toAdd.join('\n')}\n`);
     }
   } else if (fs.existsSync(path.join(projectDir, '.git'))) {
-    fs.writeFileSync(projectGitignore, `# Installed Agent Plugins\n${ignorePatterns.join('\n')}\n`);
+    fs.writeFileSync(projectGitignore, `# Job Search Workspace and Plugins\n${ignorePatterns.join('\n')}\n`);
   }
+
+  // Check for already-tracked sensitive workspace files in Git history (PRO-57)
+  checkAlreadyTrackedFiles(projectDir, jobSearchDir);
 
   console.log(`\n${GREEN}${BOLD}==============================================================${RESET}`);
   console.log(`${GREEN}${BOLD}  Setup Complete! Job Search Automation is ready to use.      ${RESET}`);
@@ -1016,14 +1101,25 @@ async function handleUpdateResume(args) {
   // Atomic replace
   const tmpResume = `${targetResume}.tmp.${Date.now()}`;
   fs.copyFileSync(expResume, tmpResume);
-  fs.chmodSync(tmpResume, 0o644);
+  fs.chmodSync(tmpResume, 0o600);
   fs.renameSync(tmpResume, targetResume);
+  try {
+    fs.chmodSync(targetResume, 0o600);
+  } catch {}
+
+  // Ensure parent directory retains 0o700 if .job-search
+  if (path.basename(cfgDir) === '.job-search') {
+    try {
+      fs.chmodSync(cfgDir, 0o700);
+    } catch {}
+  }
 
   // Update updatedAt in config.json
   try {
     const cfg = JSON.parse(fs.readFileSync(cfgFile, 'utf-8'));
     cfg.updatedAt = new Date().toISOString();
     fs.writeFileSync(cfgFile, JSON.stringify(cfg, null, 2) + '\n', { mode: 0o600 });
+    fs.chmodSync(cfgFile, 0o600);
   } catch {}
 
   console.log(`${GREEN}${BOLD}[SUCCESS] Resume successfully updated at:${RESET} ${targetResume}`);

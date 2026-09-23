@@ -83,7 +83,10 @@ function main() {
   const expectedTmpDir = path.join(resolvedWorkspace, '.job-search', 'tmp');
 
   if (ensureDirOnly) {
-    fs.mkdirSync(expectedTmpDir, { recursive: true });
+    fs.mkdirSync(expectedTmpDir, { recursive: true, mode: 0o700 });
+    try {
+      fs.chmodSync(expectedTmpDir, 0o700);
+    } catch {}
     console.log(`[cleanup-tmp] Directory verified: ${expectedTmpDir}`);
     process.exit(0);
   }

@@ -45,10 +45,16 @@ export class SqliteAdapter implements DataAdapter {
   public async initialize(): Promise<void> {
     const dir = path.dirname(this.dbPath);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
     }
+    try {
+      fs.chmodSync(dir, 0o700);
+    } catch {}
 
     this.db = new DatabaseSync(this.dbPath);
+    try {
+      fs.chmodSync(this.dbPath, 0o600);
+    } catch {}
 
     // Enable WAL mode and foreign keys for performance and durability
     this.db.exec('PRAGMA journal_mode = WAL;');

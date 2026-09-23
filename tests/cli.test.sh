@@ -671,6 +671,93 @@ FAIL_OUTPUT="$(PATH="$TMP_STUB_DIR:$PATH" STUB_RECORD_FILE="$STUB_RECORD_FILE" S
 assert_contains "$FAIL_OUTPUT" "Failed to store Neon connection string in macOS Keychain" "CLI visibly fails on Keychain credential storage error"
 
 # ------------------------------------------------------------------------------
+# Test 14: Private Workspace Protection & Git Isolation (PRO-57)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 14] Private Workspace Protection & Git Isolation (PRO-57)${RESET}"
+
+TMP_SEC_DIR="$TMP_TEST_DIR/security-isolation-cli"
+mkdir -p "$TMP_SEC_DIR"
+
+# 1. Local Mode Setup inside Git Repository
+TMP_GIT_LOCAL="$TMP_SEC_DIR/git-local-proj"
+mkdir -p "$TMP_GIT_LOCAL"
+git -C "$TMP_GIT_LOCAL" init -q
+
+"$ROOT_DIR/bin/cli.js" setup --directory "$TMP_GIT_LOCAL" --resume "$FIXTURE_RESUME" -y >/dev/null
+
+# Assert permissions
+JS_DIR_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search" 2>/dev/null)"
+JS_TMP_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/tmp" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/tmp" 2>/dev/null)"
+RESUME_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/resume.pdf" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/resume.pdf" 2>/dev/null)"
+SQLITE_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/job-search.sqlite" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/job-search.sqlite" 2>/dev/null)"
+CFG_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/config.json" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/config.json" 2>/dev/null)"
+GI_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/.gitignore" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/.gitignore" 2>/dev/null)"
+
+assert_equals "700" "$JS_DIR_PERM" ".job-search/ directory has mode 0700"
+assert_equals "700" "$JS_TMP_PERM" ".job-search/tmp/ directory has mode 0700"
+assert_equals "600" "$RESUME_PERM" ".job-search/resume.pdf has mode 0600"
+assert_equals "600" "$SQLITE_PERM" ".job-search/job-search.sqlite has mode 0600"
+assert_equals "600" "$CFG_PERM" ".job-search/config.json has mode 0600"
+assert_equals "600" "$GI_PERM" ".job-search/.gitignore has mode 0600"
+
+# Assert inner .gitignore contents
+INNER_GI_CONTENT="$(cat "$TMP_GIT_LOCAL/.job-search/.gitignore")"
+assert_contains "$INNER_GI_CONTENT" "*" "Inner .gitignore contains wildcard *"
+assert_contains "$INNER_GI_CONTENT" "!.gitignore" "Inner .gitignore exempts .gitignore"
+
+# Assert project-level .gitignore
+assert_file_exists "$TMP_GIT_LOCAL/.gitignore" "Project-level .gitignore created in Git workspace"
+PROJ_GI_CONTENT="$(cat "$TMP_GIT_LOCAL/.gitignore")"
+assert_contains "$PROJ_GI_CONTENT" ".job-search/" "Project-level .gitignore includes .job-search/"
+
+# Assert Git staging isolation in local mode
+GIT_STATUS="$(git -C "$TMP_GIT_LOCAL" status --porcelain)"
+assert_not_contains "$GIT_STATUS" ".job-search" "git status omits .job-search/ files"
+git -C "$TMP_GIT_LOCAL" add .
+GIT_STAGED="$(git -C "$TMP_GIT_LOCAL" status --porcelain)"
+assert_not_contains "$GIT_STAGED" ".job-search" "git add . does NOT stage any .job-search/ files in local mode"
+
+# 2. Neon Mode Setup inside Git Repository
+TMP_GIT_NEON="$TMP_SEC_DIR/git-neon-proj"
+mkdir -p "$TMP_GIT_NEON"
+git -C "$TMP_GIT_NEON" init -q
+
+"$ROOT_DIR/bin/cli.js" setup --mode neon --mock --directory "$TMP_GIT_NEON" --resume "$FIXTURE_RESUME" -y >/dev/null
+
+assert_file_exists "$TMP_GIT_NEON/.job-search/.gitignore" "Neon mode generates inner .job-search/.gitignore"
+NEON_INNER_GI="$(cat "$TMP_GIT_NEON/.job-search/.gitignore")"
+assert_contains "$NEON_INNER_GI" "*" "Neon inner .gitignore contains wildcard *"
+assert_file_exists "$TMP_GIT_NEON/.gitignore" "Neon mode creates project-level .gitignore"
+NEON_PROJ_GI="$(cat "$TMP_GIT_NEON/.gitignore")"
+assert_contains "$NEON_PROJ_GI" ".job-search/" "Neon project-level .gitignore includes .job-search/"
+
+git -C "$TMP_GIT_NEON" add .
+NEON_GIT_STAGED="$(git -C "$TMP_GIT_NEON" status --porcelain)"
+assert_not_contains "$NEON_GIT_STAGED" ".job-search" "git add . does NOT stage .job-search/ files in Neon mode"
+
+# 3. Preservation on update-resume
+"$ROOT_DIR/bin/cli.js" update-resume "$FIXTURE_RESUME_V2" --directory "$TMP_GIT_LOCAL" >/dev/null
+UPDATED_RESUME_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/resume.pdf" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/resume.pdf" 2>/dev/null)"
+UPDATED_DIR_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search" 2>/dev/null)"
+UPDATED_CFG_PERM="$(stat -f "%Lp" "$TMP_GIT_LOCAL/.job-search/config.json" 2>/dev/null || stat -c "%a" "$TMP_GIT_LOCAL/.job-search/config.json" 2>/dev/null)"
+
+assert_equals "600" "$UPDATED_RESUME_PERM" "update-resume preserves 0600 on resume.pdf"
+assert_equals "700" "$UPDATED_DIR_PERM" "update-resume preserves 0700 on .job-search/ directory"
+assert_equals "600" "$UPDATED_CFG_PERM" "update-resume preserves 0600 on config.json"
+
+# 4. Check warning when workspace files are already tracked in Git
+TMP_TRACKED_PROJ="$TMP_SEC_DIR/already-tracked-proj"
+mkdir -p "$TMP_TRACKED_PROJ/.job-search"
+git -C "$TMP_TRACKED_PROJ" init -q
+echo "fake resume" > "$TMP_TRACKED_PROJ/.job-search/resume.pdf"
+git -C "$TMP_TRACKED_PROJ" add -f ".job-search/resume.pdf"
+git -C "$TMP_TRACKED_PROJ" -c user.name="Test" -c user.email="test@example.com" commit -q -m "Accidental commit of resume"
+
+SETUP_WARN_OUT="$("$ROOT_DIR/bin/cli.js" setup --directory "$TMP_TRACKED_PROJ" --resume "$FIXTURE_RESUME" -y 2>&1 || true)"
+assert_contains "$SETUP_WARN_OUT" "already tracked by Git" "CLI warns when files in .job-search/ are already tracked"
+assert_contains "$SETUP_WARN_OUT" "git rm --cached" "CLI provides git rm --cached remediation command"
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo -e "\n${CYAN}==============================================================${RESET}"

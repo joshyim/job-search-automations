@@ -148,6 +148,7 @@ EOF
   fi
   chmod 600 "$tmp_cfg"
   mv "$tmp_cfg" "$cfg_file"
+  chmod 600 "$cfg_file" 2>/dev/null || true
 }
 
 # --- Fast-Path Resume Updater ---
@@ -215,13 +216,19 @@ handle_update_resume() {
   # Atomic copy
   local tmp_target="${target_resume}.tmp.$$"
   cp "$expanded_resume" "$tmp_target"
-  chmod 644 "$tmp_target"
+  chmod 600 "$tmp_target"
   mv "$tmp_target" "$target_resume"
+  chmod 600 "$target_resume" 2>/dev/null || true
+
+  # Ensure cfg_dir is 700 if .job-search
+  if [ -d "$cfg_dir" ] && [ "$(basename "$cfg_dir")" = ".job-search" ]; then
+    chmod 700 "$cfg_dir" 2>/dev/null || true
+  fi
 
   # If cfg_dir/resume.pdf differs from target_resume, also copy there
   if [ "$target_resume" != "$cfg_dir/resume.pdf" ]; then
     cp "$expanded_resume" "$cfg_dir/resume.pdf"
-    chmod 644 "$cfg_dir/resume.pdf"
+    chmod 600 "$cfg_dir/resume.pdf" 2>/dev/null || true
   fi
 
   # Update config updatedAt
@@ -525,7 +532,9 @@ echo -e "${CYAN}[*] Initializing Job Search Plugin (${BOLD}${MODE} mode${RESET}$
 
 # 1. Prepare Workspace .job-search Directory
 mkdir -p "$JOB_SEARCH_DIR"
+chmod 700 "$JOB_SEARCH_DIR" 2>/dev/null || true
 mkdir -p "$JOB_SEARCH_DIR/tmp"
+chmod 700 "$JOB_SEARCH_DIR/tmp" 2>/dev/null || true
 echo -e "${GREEN}[+] Workspace directory ready:${RESET} $JOB_SEARCH_DIR"
 
 # 2. Copy Resume to conventional path
@@ -534,10 +543,12 @@ if [ -n "$RESUME_PATH" ] && [ -f "$RESUME_PATH" ]; then
     echo -e "${YELLOW}[WARNING] Resume does not have a .pdf extension. Downstream assessment skills expect PDF format.${RESET}"
   fi
   cp "$RESUME_PATH" "$TARGET_RESUME.tmp.$$"
-  chmod 644 "$TARGET_RESUME.tmp.$$"
+  chmod 600 "$TARGET_RESUME.tmp.$$"
   mv "$TARGET_RESUME.tmp.$$" "$TARGET_RESUME"
+  chmod 600 "$TARGET_RESUME" 2>/dev/null || true
   echo -e "${GREEN}[+] Resume installed to:${RESET} $TARGET_RESUME"
 elif [ -f "$TARGET_RESUME" ]; then
+  chmod 600 "$TARGET_RESUME" 2>/dev/null || true
   echo -e "${GREEN}[+] Existing resume preserved:${RESET} $TARGET_RESUME"
 else
   echo -e "${YELLOW}[!] No resume provided yet.${RESET} Workspace scaffolding will proceed."
@@ -656,6 +667,9 @@ if [ "$MODE" = "local" ]; then
   }
   db.close();
   "
+  chmod 600 "$TARGET_SQLITE" 2>/dev/null || true
+  if [ -f "$TARGET_SQLITE-wal" ]; then chmod 600 "$TARGET_SQLITE-wal" 2>/dev/null || true; fi
+  if [ -f "$TARGET_SQLITE-shm" ]; then chmod 600 "$TARGET_SQLITE-shm" 2>/dev/null || true; fi
   echo -e "${GREEN}[+] SQLite schema initialized and seeded.${RESET}"
 
   # Also scaffold markdown templates if legacy WORKFLOW_DATA_PATH was specified
@@ -680,14 +694,6 @@ if [ "$MODE" = "local" ]; then
     done
   fi
 
-  # Generate .gitignore inside .job-search/
-  cat << 'EOF' > "$JOB_SEARCH_DIR/.gitignore"
-# Local SQLite database and journal files
-job-search.sqlite*
-tmp/
-EOF
-  chmod 644 "$JOB_SEARCH_DIR/.gitignore"
-
 elif [ "$MODE" = "neon" ]; then
   # Store in Keychain if provided
   if [ -n "$NEON_CONN_STR" ]; then
@@ -710,6 +716,26 @@ elif [ "$MODE" = "neon" ]; then
   fi
 
   node "$SCRIPT_DIR/scripts/init-neon.js" "${INIT_ARGS[@]}"
+fi
+
+# 3.1 Generate/update inner .gitignore inside .job-search/ (PRO-57)
+if [ ! -f "$JOB_SEARCH_DIR/.gitignore" ]; then
+  cat << 'EOF' > "$JOB_SEARCH_DIR/.gitignore"
+# Ignore all private workspace data
+*
+!.gitignore
+EOF
+  chmod 600 "$JOB_SEARCH_DIR/.gitignore" 2>/dev/null || true
+else
+  # Do not overwrite stricter existing ignore rules
+  if ! grep -q "^\*" "$JOB_SEARCH_DIR/.gitignore" 2>/dev/null; then
+    for pat in "resume.pdf" "config.json" "job-search.sqlite*" "tmp/"; do
+      if ! grep -F -q "$pat" "$JOB_SEARCH_DIR/.gitignore" 2>/dev/null; then
+        echo "$pat" >> "$JOB_SEARCH_DIR/.gitignore"
+      fi
+    done
+  fi
+  chmod 600 "$JOB_SEARCH_DIR/.gitignore" 2>/dev/null || true
 fi
 
 # 4. Write config.json
@@ -1049,12 +1075,6 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
       fs.writeFileSync(launchFile, JSON.stringify(cfg, null, 2) + '\n');
     "
     echo -e "${GREEN}[+] Claude launch configuration created:${RESET} $LAUNCH_FILE"
-
-    if [ -f "$PROJECT_DIR/.gitignore" ]; then
-      if ! grep -q "\.claude/plugins/" "$PROJECT_DIR/.gitignore"; then
-        echo -e "\n# Installed Agent Plugins\n.claude/plugins/" >> "$PROJECT_DIR/.gitignore"
-      fi
-    fi
   fi
 
   if [ "$IS_CODEX_TARGET" = true ]; then
@@ -1129,12 +1149,6 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
     if [ -f "$SCRIPT_DIR/AGENTS.md" ]; then
       cp "$SCRIPT_DIR/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
       echo -e "${GREEN}[+] Agent guidelines created:${RESET} $PROJECT_DIR/AGENTS.md"
-    fi
-
-    if [ -f "$PROJECT_DIR/.gitignore" ]; then
-      if ! grep -q "\.codex/plugins/" "$PROJECT_DIR/.gitignore"; then
-        echo -e "\n# Installed Agent Plugins\n.codex/plugins/" >> "$PROJECT_DIR/.gitignore"
-      fi
     fi
   fi
 
@@ -1224,12 +1238,55 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
       cp "$SCRIPT_DIR/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
       echo -e "${GREEN}[+] Agent guidelines created:${RESET} $PROJECT_DIR/AGENTS.md"
     fi
+  fi
+fi
 
-    if [ -f "$PROJECT_DIR/.gitignore" ]; then
-      if ! grep -q "\.agents/plugins/" "$PROJECT_DIR/.gitignore"; then
-        echo -e "\n# Installed Agent Plugins\n.agents/plugins/" >> "$PROJECT_DIR/.gitignore"
+# 7. Append workspace data directory and plugins to project .gitignore if git repo (PRO-57)
+PROJECT_GITIGNORE="$PROJECT_DIR/.gitignore"
+IGNORE_PATTERNS=(".job-search/")
+if [ "$IS_CLAUDE_TARGET" = true ]; then IGNORE_PATTERNS+=(".claude/plugins/"); fi
+if [ "$IS_CODEX_TARGET" = true ]; then IGNORE_PATTERNS+=(".codex/plugins/"); fi
+if [ "$IS_STANDARD_TARGET" = true ] || [ "$IS_COPILOT_TARGET" = true ]; then IGNORE_PATTERNS+=(".agents/plugins/"); fi
+
+if [ -f "$PROJECT_GITIGNORE" ]; then
+  TO_ADD=()
+  for pat in "${IGNORE_PATTERNS[@]}"; do
+    if [ "$pat" = ".job-search/" ]; then
+      if ! grep -q "\.job-search" "$PROJECT_GITIGNORE" 2>/dev/null; then
+        TO_ADD+=("$pat")
+      fi
+    else
+      if ! grep -F -q "$pat" "$PROJECT_GITIGNORE" 2>/dev/null; then
+        TO_ADD+=("$pat")
       fi
     fi
+  done
+  if [ ${#TO_ADD[@]} -gt 0 ]; then
+    echo -e "\n# Job Search Workspace and Plugins" >> "$PROJECT_GITIGNORE"
+    for pat in "${TO_ADD[@]}"; do
+      echo "$pat" >> "$PROJECT_GITIGNORE"
+    done
+  fi
+elif [ -d "$PROJECT_DIR/.git" ]; then
+  echo -e "# Job Search Workspace and Plugins" > "$PROJECT_GITIGNORE"
+  for pat in "${IGNORE_PATTERNS[@]}"; do
+    echo "$pat" >> "$PROJECT_GITIGNORE"
+  done
+fi
+
+# Check for already-tracked sensitive workspace files in Git history (PRO-57)
+if command -v git >/dev/null 2>&1 && [ -d "$PROJECT_DIR/.git" ]; then
+  REL_JS="$(python3 -c "import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))" "$JOB_SEARCH_DIR" "$PROJECT_DIR" 2>/dev/null || echo ".job-search")"
+  TRACKED_FILES="$(git -C "$PROJECT_DIR" ls-files "$REL_JS" 2>/dev/null || true)"
+  if [ -n "$TRACKED_FILES" ]; then
+    echo -e "\n${YELLOW}${BOLD}[WARNING] Sensitive workspace file(s) already tracked by Git:${RESET}" >&2
+    while IFS= read -r f; do
+      [ -n "$f" ] && echo -e "  ${YELLOW}- $f${RESET}" >&2
+    done <<< "$TRACKED_FILES"
+    echo -e "${YELLOW}Git ignore rules will NOT automatically untrack files already in history.${RESET}" >&2
+    echo -e "${YELLOW}To prevent accidental publication, untrack them by running:${RESET}" >&2
+    UNTRACK_CMD="$(echo "$TRACKED_FILES" | tr '\n' ' ')"
+    echo -e "  ${BOLD}git rm --cached $UNTRACK_CMD${RESET}\n" >&2
   fi
 fi
 
