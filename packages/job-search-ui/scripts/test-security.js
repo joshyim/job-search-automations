@@ -360,7 +360,58 @@ async function runTests() {
     assert(legitJson.success === true, 'Legitimate call returns success: true');
   }
 
-  console.log('\n🎉 ALL 7 SECURITY TEST SUITES PASSED SUCCESSFULLY!\n');
+  // 9. Test Content Security Policy & Security Headers (PRO-59)
+  console.log('\n[Test 8] Content Security Policy & Subresource Integrity (PRO-59)');
+  {
+    const indexRes = await fetch(`${BASE_URL}/index.html`);
+    assert(indexRes.status === 200, 'Serves /index.html with 200');
+
+    // CSP Header Verification
+    const csp = indexRes.headers.get('content-security-policy') || '';
+    assert(csp.includes("default-src 'self'"), 'CSP includes default-src \'self\'');
+    assert(csp.includes("script-src 'self' 'nonce-"), 'CSP includes script-src \'self\' \'nonce-...\'');
+    assert(!csp.includes("script-src *"), 'CSP does not allow wildcard script-src');
+    assert(!csp.includes("https://cdn.jsdelivr.net"), 'CSP does not whitelist jsdelivr CDN in script-src');
+    assert(csp.includes("frame-ancestors 'none'"), 'CSP prevents framing (frame-ancestors \'none\')');
+
+    // Security Headers Verification
+    assert(indexRes.headers.get('x-content-type-options') === 'nosniff', 'X-Content-Type-Options is nosniff');
+    assert(indexRes.headers.get('x-frame-options') === 'DENY', 'X-Frame-Options is DENY');
+    assert(
+      indexRes.headers.get('referrer-policy') === 'strict-origin-when-cross-origin',
+      'Referrer-Policy is strict-origin-when-cross-origin'
+    );
+
+    // Nonce Matching Verification
+    const nonceMatch = csp.match(/'nonce-([A-Za-z0-9+/=]+)'/);
+    assert(Boolean(nonceMatch && nonceMatch[1]), 'CSP contains valid base64 nonce');
+    const expectedNonce = nonceMatch[1];
+
+    const html = await indexRes.text();
+    assert(
+      html.includes(`nonce="${expectedNonce}"`),
+      'Dynamic token script tag contains matching nonce attribute'
+    );
+
+    // Subresource Integrity & Vendored Mermaid Script Verification
+    const mermaidTagMatch = html.match(/<script\s+src="vendor\/mermaid\.min\.js"\s+integrity="sha384-([^"]+)"/);
+    assert(Boolean(mermaidTagMatch && mermaidTagMatch[1]), 'index.html contains vendor/mermaid.min.js with sha384 SRI integrity attribute');
+
+    // Verify vendor/mermaid.min.js is served locally with nosniff and matching SRI hash
+    const mermaidRes = await fetch(`${BASE_URL}/vendor/mermaid.min.js`);
+    assert(mermaidRes.status === 200, 'Serves /vendor/mermaid.min.js with 200 OK');
+    assert(mermaidRes.headers.get('x-content-type-options') === 'nosniff', '/vendor/mermaid.min.js served with nosniff');
+
+    const crypto = await import('node:crypto');
+    const mermaidBuf = Buffer.from(await mermaidRes.arrayBuffer());
+    const actualHash = crypto.createHash('sha384').update(mermaidBuf).digest('base64');
+    assert(
+      actualHash === mermaidTagMatch[1],
+      `Actual SHA-384 of served mermaid.min.js (${actualHash}) matches integrity attribute (${mermaidTagMatch[1]})`
+    );
+  }
+
+  console.log('\n🎉 ALL 8 SECURITY TEST SUITES PASSED SUCCESSFULLY!\n');
 }
 
 runTests()

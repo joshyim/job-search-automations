@@ -8,6 +8,16 @@
 
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { DatabaseSync } from 'node:sqlite';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const UI_DIR = path.resolve(__dirname, '..');
+const REPO_ROOT = path.resolve(UI_DIR, '../..');
 
 const UI_PORT = process.env.UI_PORT || 3847;
 const BASE_URL = `http://localhost:${UI_PORT}`;
@@ -55,6 +65,7 @@ class CdpClient {
     this.ws = new WebSocket(wsUrl);
     this.msgId = 1;
     this.pending = new Map();
+    this.listeners = [];
 
     this.ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -63,8 +74,16 @@ class CdpClient {
         this.pending.delete(data.id);
         if (data.error) reject(new Error(data.error.message || JSON.stringify(data.error)));
         else resolve(data.result);
+      } else if (data.method) {
+        for (const l of this.listeners) {
+          l(data.method, data.params);
+        }
       }
     };
+  }
+
+  on(fn) {
+    this.listeners.push(fn);
   }
 
   async ready() {
@@ -116,13 +135,119 @@ class CdpClient {
 async function runTests() {
   console.log('🚀 Starting Automated E2E Browser Test Suite...\n');
 
-  // 1. Verify UI server is up
+  let spawnedServerProc = null;
+  let testWsDir = null;
+
+  // 1. Verify UI server is up or auto-start it
   try {
     const health = await fetch(`${BASE_URL}/api/health`).then((r) => r.json());
     console.log(`✅ UI Server is running at ${BASE_URL} (MCP connected: ${health.mcpConnected})`);
   } catch (err) {
-    console.error(`❌ UI Server is not reachable at ${BASE_URL}. Ensure it is running.`);
-    process.exit(1);
+    console.log(`[Setup] UI Server not detected at ${BASE_URL}. Auto-starting test server on port ${UI_PORT}...`);
+    testWsDir = path.join(REPO_ROOT, 'tests', 'fixtures', `e2e_ws_${Date.now()}`);
+    fs.mkdirSync(path.join(testWsDir, '.job-search'), { recursive: true });
+    fs.writeFileSync(
+      path.join(testWsDir, '.job-search', 'config.json'),
+      JSON.stringify({ mode: 'local', databasePath: './job-search.sqlite' }, null, 2)
+    );
+
+    const dbPath = path.join(testWsDir, '.job-search', 'job-search.sqlite');
+    const db = new DatabaseSync(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS companies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        careers_url TEXT NOT NULL,
+        is_excluded INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        last_searched_at TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS title_patterns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pattern TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('include', 'exclude')),
+        level TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        CONSTRAINT uq_pattern_type UNIQUE (pattern, type)
+      );
+      CREATE TABLE IF NOT EXISTS skills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        category TEXT,
+        importance TEXT DEFAULT 'preferred',
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS scoring_rubric (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dimension TEXT NOT NULL UNIQUE,
+        weight REAL NOT NULL,
+        poor_description TEXT,
+        moderate_description TEXT,
+        strong_description TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS crawl_queue (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL UNIQUE,
+        company_name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS candidates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        company_name TEXT NOT NULL,
+        job_title TEXT NOT NULL,
+        url TEXT NOT NULL UNIQUE,
+        location TEXT,
+        score REAL,
+        breakdown TEXT,
+        status TEXT NOT NULL DEFAULT 'new',
+        notes TEXT,
+        discovered_at TEXT NOT NULL DEFAULT (datetime('now')),
+        applied_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS run_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        mode TEXT NOT NULL,
+        companies_processed TEXT NOT NULL DEFAULT '[]',
+        urls_queued INTEGER NOT NULL DEFAULT 0,
+        candidates_scored INTEGER NOT NULL DEFAULT 0,
+        summary TEXT,
+        details TEXT DEFAULT '{}'
+      );
+    `);
+    db.close();
+
+    const serverJs = path.join(UI_DIR, 'dist', 'server.js');
+    spawnedServerProc = spawn(process.execPath, [serverJs, '--port', String(UI_PORT), '--directory', testWsDir], {
+      cwd: UI_DIR,
+      stdio: 'pipe',
+    });
+
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      try {
+        const res = await fetch(`${BASE_URL}/api/health`);
+        if (res.ok) {
+          ready = true;
+          break;
+        }
+      } catch {}
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (!ready) {
+      throw new Error(`Failed to start UI Server on ${BASE_URL}`);
+    }
+    console.log(`✅ UI Server auto-started successfully on ${BASE_URL}`);
   }
 
   // 2. Seed Test Fixtures via MCP Bridge
@@ -395,10 +520,106 @@ async function runTests() {
     await callApi('remove_title_pattern', { pattern: cancelPattern, type: 'exclude' });
     console.log('✅ [Test 4 PASSED] Cancel button behaves correctly!');
 
-    console.log('\n🎉 ALL 4 AUTOMATED E2E BROWSER TESTS PASSED SUCCESSFULLY!\n');
+    // ==========================================
+    // TEST 5: Mermaid Diagram Rendering & CSP Violation Enforcement (PRO-59)
+    // ==========================================
+    console.log('\n🧪 [Test 5] Testing Mermaid Diagram Rendering & CSP Enforcement (PRO-59)...');
+
+    // Enable Log domain to detect CSP violation reports
+    await cdp.send('Log.enable');
+    const logEntries = [];
+    cdp.on((method, params) => {
+      if (method === 'Log.entryAdded' && params?.entry) {
+        logEntries.push(params.entry);
+      }
+    });
+
+    await cdp.send('Page.navigate', { url: `${BASE_URL}/#visualization` });
+
+    // Wait for Mermaid diagram container to render SVG
+    await cdp.waitFor(
+      `Boolean(document.querySelector('#mermaid-system-diagram svg'))`,
+      12000
+    );
+    console.log('  • Dashboard rendered Mermaid architecture SVG diagram successfully');
+
+    const svgInfo = await cdp.eval(`
+      (() => {
+        const svg = document.querySelector('#mermaid-system-diagram svg');
+        return {
+          id: svg?.id,
+          hasNodes: svg?.querySelectorAll('.node').length > 0,
+          innerLength: svg?.innerHTML?.length || 0,
+        };
+      })()
+    `);
+    if (!svgInfo.hasNodes || svgInfo.innerLength < 100) {
+      throw new Error(`Mermaid diagram SVG appears empty or invalid: ${JSON.stringify(svgInfo)}`);
+    }
+    console.log(`  • Mermaid SVG nodes verified (${svgInfo.innerLength} bytes of SVG markup)`);
+
+    // Verify window.mermaid is present
+    const hasMermaid = await cdp.eval(`Boolean(window.mermaid && typeof window.mermaid.render === 'function')`);
+    if (!hasMermaid) {
+      throw new Error('window.mermaid is not defined or missing render function');
+    }
+    console.log('  • window.mermaid is loaded and functional from vendored asset');
+
+    // Test CSP: Attempt to inject untrusted inline script
+    await cdp.eval(`
+      (() => {
+        const s = document.createElement('script');
+        s.textContent = 'window.__MALICIOUS_INLINE_RAN__ = true;';
+        document.body.appendChild(s);
+      })()
+    `);
+    const inlineRan = await cdp.eval(`Boolean(window.__MALICIOUS_INLINE_RAN__)`);
+    if (inlineRan) {
+      throw new Error('CSP failed to block untrusted inline script without nonce!');
+    }
+    console.log('  • CSP successfully blocked untrusted inline script execution');
+
+    // Test CSP: Attempt to inject untrusted external CDN script
+    await cdp.eval(`
+      (() => {
+        const s = document.createElement('script');
+        s.src = 'https://code.jquery.com/jquery-3.7.1.min.js';
+        document.head.appendChild(s);
+      })()
+    `);
+    await new Promise((r) => setTimeout(r, 1000));
+    const jqueryLoaded = await cdp.eval(`Boolean(window.jQuery)`);
+    if (jqueryLoaded) {
+      throw new Error('CSP failed to block untrusted external script source!');
+    }
+    console.log('  • CSP successfully blocked untrusted external script source');
+
+    // Verify that CSP violations were reported to browser log
+    const securityViolations = logEntries.filter(
+      (e) => e.source === 'security' || (e.text && e.text.includes('Content Security Policy'))
+    );
+    if (securityViolations.length === 0) {
+      console.warn('  ⚠️ Note: No security log entries caught via CDP Log domain, but DOM checks confirmed execution was blocked.');
+    } else {
+      console.log(`  • Verified ${securityViolations.length} CSP violation entries logged by Chrome security subsystem`);
+    }
+
+    console.log('✅ [Test 5 PASSED] Mermaid rendering and CSP enforcement verified!');
+
+    console.log('\n🎉 ALL 5 AUTOMATED E2E BROWSER TESTS PASSED SUCCESSFULLY!\n');
   } finally {
     cdp.close();
     cleanup();
+    if (spawnedServerProc) {
+      try {
+        spawnedServerProc.kill('SIGTERM');
+      } catch {}
+    }
+    if (testWsDir) {
+      try {
+        fs.rmSync(testWsDir, { recursive: true, force: true });
+      } catch {}
+    }
   }
 }
 

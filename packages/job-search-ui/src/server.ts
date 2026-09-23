@@ -272,13 +272,32 @@ class JobSearchUIServer {
       if (fs.existsSync(indexPath)) {
         try {
           const raw = fs.readFileSync(indexPath, 'utf-8');
-          const scriptInjection = `<script>window.__DASHBOARD_TOKEN__ = ${JSON.stringify(this.sessionToken)};</script>\n</head>`;
+          const scriptNonce = crypto.randomBytes(16).toString('base64');
+          const scriptInjection = `<script nonce="${scriptNonce}">window.__DASHBOARD_TOKEN__ = ${JSON.stringify(this.sessionToken)};</script>\n</head>`;
           const injected = raw.includes('</head>')
             ? raw.replace('</head>', scriptInjection)
             : `${raw}\n${scriptInjection}`;
+
+          const csp = [
+            "default-src 'self'",
+            `script-src 'self' 'nonce-${scriptNonce}'`,
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+            "font-src 'self' https://fonts.gstatic.com",
+            "img-src 'self' data:",
+            "connect-src 'self'",
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+          ].join('; ');
+
           res.writeHead(200, {
             'Content-Type': 'text/html; charset=utf-8',
             'Set-Cookie': `dashboard_token=${this.sessionToken}; Path=/; SameSite=Strict`,
+            'Content-Security-Policy': csp,
+            'X-Content-Type-Options': 'nosniff',
+            'X-Frame-Options': 'DENY',
+            'Referrer-Policy': 'strict-origin-when-cross-origin',
           });
           res.end(injected);
         } catch {
@@ -305,7 +324,10 @@ class JobSearchUIServer {
 
       const ext = path.extname(filePath).toLowerCase();
       const contentType = MIME_TYPES[ext] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': contentType });
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'X-Content-Type-Options': 'nosniff',
+      });
       fs.createReadStream(filePath).pipe(res);
     });
   }
@@ -339,6 +361,11 @@ class JobSearchUIServer {
 
     this.httpServer = http.createServer(async (req, res) => {
       const activePort = this.options.port;
+
+      // Defense-in-depth security headers
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'DENY');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
 
       // 1. Host Header Validation (mitigate DNS rebinding)
       const rawHost = req.headers.host || '';
