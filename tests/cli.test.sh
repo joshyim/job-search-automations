@@ -90,6 +90,17 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local test_name="$3"
+  if [[ "$haystack" != *"$needle"* ]]; then
+    pass "$test_name"
+  else
+    fail "$test_name (Substring unexpectedly found: '$needle')"
+  fi
+}
+
 echo -e "${CYAN}${BOLD}=== Running CLI & Self-Contained Plugin Test Suite (PRO-28) ===${RESET}\n"
 
 TMP_TEST_DIR="$(mktemp -d -t cli_plugin_test_XXXXXX)"
@@ -121,7 +132,7 @@ echo -e "\n${BOLD}[Test 2] Clean Setup into Isolated Project Workspace${RESET}"
 PROJECT_DIR="$TMP_TEST_DIR/sample-project"
 mkdir -p "$PROJECT_DIR"
 
-SETUP_OUT="$("$ROOT_DIR/bin/cli.js" setup --directory "$PROJECT_DIR" --resume "$FIXTURE_RESUME" -y)"
+SETUP_OUT="$("$ROOT_DIR/bin/cli.js" setup --claude --directory "$PROJECT_DIR" --resume "$FIXTURE_RESUME" -y)"
 assert_contains "$SETUP_OUT" "Setup Complete!" "Setup reported completion"
 
 PLUGIN_DIR="$PROJECT_DIR/.claude/plugins/job-search-automations"
@@ -199,26 +210,28 @@ assert_file_exists "$PROJECT_DIR/.job-search/config.json" "config.json created"
 assert_file_exists "$PROJECT_DIR/.job-search/.gitignore" ".job-search/.gitignore created"
 assert_dir_exists "$PROJECT_DIR/.job-search/tmp" ".job-search/tmp/ directory created (PRO-32)"
 
-# Verify expanded permissions in .claude/settings.json
 CLI_SETTINGS="$(cat "$PROJECT_DIR/.claude/settings.json")"
 assert_contains "$CLI_SETTINGS" '"defaultMode": "auto"' ".claude/settings.json contains permissions.defaultMode = auto"
-assert_contains "$CLI_SETTINGS" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json contains mkdir .job-search/tmp* permission (PRO-32)"
-assert_contains "$CLI_SETTINGS" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json contains rm -rf ./.job-search/tmp* permission (PRO-32)"
-assert_contains "$CLI_SETTINGS" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json contains rm -rf .job-search/tmp* permission (PRO-32)"
-assert_contains "$CLI_SETTINGS" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json contains rm -f ./.job-search/tmp/* permission (PRO-32)"
-assert_contains "$CLI_SETTINGS" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json contains rm -f .job-search/tmp/* permission (PRO-32)"
+assert_contains "$CLI_SETTINGS" "cleanup-tmp.js:*" ".claude/settings.json contains cleanup-tmp execution grant (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json omits wildcard mkdir permission (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json omits wildcard rm -rf permission (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json omits wildcard rm -rf permission (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json omits wildcard rm -f permission (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json omits wildcard rm -f permission (PRO-55)"
 
-# PRO-34 permissions assertions
+# PRO-34 & PRO-55 permissions assertions
 assert_contains "$CLI_SETTINGS" "scripts/crawl-job-board.js:*" ".claude/settings.json contains crawler execution grant (PRO-34)"
-assert_contains "$CLI_SETTINGS" "Bash(mkdir -p $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp mkdir grant (PRO-34)"
-assert_contains "$CLI_SETTINGS" "Bash(rm -rf $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp rm grant (PRO-34)"
+assert_not_contains "$CLI_SETTINGS" "Bash(mkdir -p $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json omits absolute tmp mkdir grant (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "Bash(rm -rf $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json omits absolute tmp rm grant (PRO-55)"
 assert_contains "$CLI_SETTINGS" "Read($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Read grant (PRO-34)"
-assert_contains "$CLI_SETTINGS" "Write($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Write grant (PRO-34)"
+assert_not_contains "$CLI_SETTINGS" "Write($PROJECT_DIR/**)" ".claude/settings.json omits overbroad workspace Write grant (PRO-55)"
 assert_contains "$CLI_SETTINGS" "Read($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Read grant (PRO-34)"
 assert_contains "$CLI_SETTINGS" "Write($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Write grant (PRO-34)"
-assert_contains "$CLI_SETTINGS" "mcp__job-search-db__*" ".claude/settings.json contains mcp wildcard grant (PRO-34)"
+assert_not_contains "$CLI_SETTINGS" "mcp__job-search-db__*" ".claude/settings.json omits overbroad mcp wildcard grant (PRO-55)"
+assert_not_contains "$CLI_SETTINGS" "mcp__job-search-db__delete_rubric_dimension" ".claude/settings.json omits destructive delete_rubric_dimension (PRO-55)"
 assert_contains "$CLI_SETTINGS" "mcp__job-search-db__get_pending_queue" ".claude/settings.json contains mcp queue grant (PRO-34)"
 assert_contains "$CLI_SETTINGS" "mcp__job-search-db__list_companies" ".claude/settings.json contains mcp companies grant (PRO-34)"
+assert_contains "$CLI_SETTINGS" "mcp__job-search-db__select_workspace" ".claude/settings.json contains mcp select_workspace grant (PRO-55)"
 assert_contains "$CLI_SETTINGS" "WebSearch" ".claude/settings.json contains WebSearch grant (PRO-34)"
 assert_contains "$CLI_SETTINGS" "WebFetch" ".claude/settings.json contains WebFetch grant (PRO-34)"
 
@@ -519,6 +532,64 @@ fi
 
 assert_file_exists "$CODEX_PROJECT_DIR/.job-search/job-search.sqlite" "User SQLite database preserved after Codex uninstall"
 assert_file_exists "$CODEX_PROJECT_DIR/.job-search/resume.pdf" "User resume preserved after Codex uninstall"
+
+# ------------------------------------------------------------------------------
+# Test 11: Preserve Pre-existing permissions.defaultMode in CLI (PRO-55)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 11] Preserve Pre-existing permissions.defaultMode in CLI (PRO-55)${RESET}"
+CLI_PREEXIST_DIR="$TMP_TEST_DIR/cli-preexist-permissions"
+mkdir -p "$CLI_PREEXIST_DIR/.claude"
+cat << 'EOF' > "$CLI_PREEXIST_DIR/.claude/settings.json"
+{
+  "permissions": {
+    "defaultMode": "manual"
+  }
+}
+EOF
+"$ROOT_DIR/bin/cli.js" setup --claude --directory "$CLI_PREEXIST_DIR" --resume "$FIXTURE_RESUME" -y >/dev/null
+CLI_PREEXIST_CONTENT="$(cat "$CLI_PREEXIST_DIR/.claude/settings.json")"
+assert_contains "$CLI_PREEXIST_CONTENT" '"defaultMode": "manual"' "Existing defaultMode: manual preserved across CLI setup"
+
+# ------------------------------------------------------------------------------
+# Test 12: Routine Reconciliation Isolation in CLI (PRO-55)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 12] Routine Reconciliation Isolation in CLI (PRO-55)${RESET}"
+CLI_FAKE_HOME="$TMP_TEST_DIR/cli_fake_home"
+CLI_TASKS_DIR="$CLI_FAKE_HOME/Library/Application Support/Claude/claude-code-sessions/test-acc/test-org"
+mkdir -p "$CLI_TASKS_DIR"
+CLI_ROUTINE_PROJECT="$TMP_TEST_DIR/cli-routine-proj"
+mkdir -p "$CLI_ROUTINE_PROJECT"
+cat << EOF > "$CLI_TASKS_DIR/scheduled-tasks.json"
+{
+  "scheduledTasks": [
+    {
+      "id": "job-search-crawl",
+      "cwd": "$CLI_ROUTINE_PROJECT",
+      "permissionMode": "default"
+    },
+    {
+      "id": "unrelated-task",
+      "cwd": "$CLI_ROUTINE_PROJECT",
+      "permissionMode": "default"
+    },
+    {
+      "id": "job-search-crawl",
+      "cwd": "/some/other/workspace",
+      "permissionMode": "default"
+    }
+  ]
+}
+EOF
+HOME="$CLI_FAKE_HOME" "$ROOT_DIR/bin/cli.js" setup --claude --directory "$CLI_ROUTINE_PROJECT" --resume "$FIXTURE_RESUME" -y >/dev/null
+
+CLI_RECON_DATA="$(cat "$CLI_TASKS_DIR/scheduled-tasks.json")"
+CLI_TASK1_MODE="$(node -e "const d = JSON.parse(process.argv[1]); console.log(d.scheduledTasks[0].permissionMode);" "$CLI_RECON_DATA")"
+CLI_TASK2_MODE="$(node -e "const d = JSON.parse(process.argv[1]); console.log(d.scheduledTasks[1].permissionMode);" "$CLI_RECON_DATA")"
+CLI_TASK3_MODE="$(node -e "const d = JSON.parse(process.argv[1]); console.log(d.scheduledTasks[2].permissionMode);" "$CLI_RECON_DATA")"
+
+assert_equals "auto" "$CLI_TASK1_MODE" "Target workspace job-search task reconciled to auto mode via CLI"
+assert_equals "default" "$CLI_TASK2_MODE" "Unrelated task in same workspace remains default mode via CLI"
+assert_equals "default" "$CLI_TASK3_MODE" "Job-search task in other workspace remains default mode via CLI"
 
 # ------------------------------------------------------------------------------
 # Summary

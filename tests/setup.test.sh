@@ -68,6 +68,19 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local test_name="$3"
+  if [[ "$haystack" != *"$needle"* ]]; then
+    echo -e "  ${GREEN}✓${RESET} $test_name"
+    TEST_PASSED=$((TEST_PASSED + 1))
+  else
+    echo -e "  ${RED}✗${RESET} $test_name (Substring unexpectedly found: '$needle')"
+    TEST_FAILED=$((TEST_FAILED + 1))
+  fi
+}
+
 echo -e "${CYAN}${BOLD}=== Running Setup & Configuration Test Suite ===${RESET}\n"
 
 # Create isolated test environment
@@ -277,23 +290,26 @@ assert_equals "VALID" "$LAUNCH_JSON_VALID" ".claude/launch.json contains job-sea
 assert_file_exists "$PROJECT_DIR/.claude/settings.json" ".claude/settings.json created with permissions"
 SETTINGS_CONTENT="$(cat "$PROJECT_DIR/.claude/settings.json")"
 assert_contains "$SETTINGS_CONTENT" '"defaultMode": "auto"' ".claude/settings.json contains permissions.defaultMode = auto"
-assert_contains "$SETTINGS_CONTENT" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json contains mkdir .job-search/tmp* permission (PRO-32)"
-assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json contains rm -rf ./.job-search/tmp* permission (PRO-32)"
-assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json contains rm -rf .job-search/tmp* permission (PRO-32)"
-assert_contains "$SETTINGS_CONTENT" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json contains rm -f ./.job-search/tmp/* permission (PRO-32)"
-assert_contains "$SETTINGS_CONTENT" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json contains rm -f .job-search/tmp/* permission (PRO-32)"
+assert_contains "$SETTINGS_CONTENT" "cleanup-tmp.js:*" ".claude/settings.json contains cleanup-tmp execution grant (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(mkdir -p .job-search/tmp*)" ".claude/settings.json omits wildcard mkdir permission (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(rm -rf ./.job-search/tmp*)" ".claude/settings.json omits wildcard rm -rf permission (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(rm -rf .job-search/tmp*)" ".claude/settings.json omits wildcard rm -rf permission (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(rm -f ./.job-search/tmp/*)" ".claude/settings.json omits wildcard rm -f permission (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(rm -f .job-search/tmp/*)" ".claude/settings.json omits wildcard rm -f permission (PRO-55)"
 
-# PRO-34 permissions assertions
+# PRO-34 & PRO-55 permissions assertions
 assert_contains "$SETTINGS_CONTENT" "scripts/crawl-job-board.js:*" ".claude/settings.json contains crawler execution grant (PRO-34)"
-assert_contains "$SETTINGS_CONTENT" "Bash(mkdir -p $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp mkdir grant (PRO-34)"
-assert_contains "$SETTINGS_CONTENT" "Bash(rm -rf $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json contains absolute tmp rm grant (PRO-34)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(mkdir -p $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json omits absolute tmp mkdir grant (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "Bash(rm -rf $PROJECT_DIR/.job-search/tmp*)" ".claude/settings.json omits absolute tmp rm grant (PRO-55)"
 assert_contains "$SETTINGS_CONTENT" "Read($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Read grant (PRO-34)"
-assert_contains "$SETTINGS_CONTENT" "Write($PROJECT_DIR/**)" ".claude/settings.json contains scoped workspace Write grant (PRO-34)"
+assert_not_contains "$SETTINGS_CONTENT" "Write($PROJECT_DIR/**)" ".claude/settings.json omits overbroad workspace Write grant (PRO-55)"
 assert_contains "$SETTINGS_CONTENT" "Read($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Read grant (PRO-34)"
 assert_contains "$SETTINGS_CONTENT" "Write($PROJECT_DIR/.job-search/**)" ".claude/settings.json contains scoped .job-search Write grant (PRO-34)"
-assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__*" ".claude/settings.json contains mcp wildcard grant (PRO-34)"
+assert_not_contains "$SETTINGS_CONTENT" "mcp__job-search-db__*" ".claude/settings.json omits overbroad mcp wildcard grant (PRO-55)"
+assert_not_contains "$SETTINGS_CONTENT" "mcp__job-search-db__delete_rubric_dimension" ".claude/settings.json omits destructive delete_rubric_dimension (PRO-55)"
 assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__get_pending_queue" ".claude/settings.json contains mcp queue grant (PRO-34)"
 assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__list_companies" ".claude/settings.json contains mcp companies grant (PRO-34)"
+assert_contains "$SETTINGS_CONTENT" "mcp__job-search-db__select_workspace" ".claude/settings.json contains mcp select_workspace grant (PRO-55)"
 assert_contains "$SETTINGS_CONTENT" "WebSearch" ".claude/settings.json contains WebSearch grant (PRO-34)"
 assert_contains "$SETTINGS_CONTENT" "WebFetch" ".claude/settings.json contains WebFetch grant (PRO-34)"
 
@@ -433,6 +449,64 @@ assert_file_exists "$STD_SH_DIR/.mcp.json" ".mcp.json created in standard mode"
 assert_dir_exists "$STD_SH_DIR/.agents/skills" ".agents/skills created in standard mode"
 assert_file_exists "$STD_SH_DIR/AGENTS.md" "AGENTS.md created in standard mode"
 assert_file_exists "$STD_SH_DIR/.job-search/job-search.sqlite" "database created in standard mode"
+
+# ------------------------------------------------------------------------------
+# Test 13: Preserve Pre-existing permissions.defaultMode (PRO-55)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 13] Preserve Pre-existing permissions.defaultMode (PRO-55)${RESET}"
+PREEXIST_DIR="$TMP_TEST_DIR/preexist-permissions"
+mkdir -p "$PREEXIST_DIR/.claude"
+cat << 'EOF' > "$PREEXIST_DIR/.claude/settings.json"
+{
+  "permissions": {
+    "defaultMode": "manual"
+  }
+}
+EOF
+"$ROOT_DIR/setup.sh" --claude --directory "$PREEXIST_DIR" --resume "$FIXTURE_RESUME" -y >/dev/null
+PREEXIST_CONTENT="$(cat "$PREEXIST_DIR/.claude/settings.json")"
+assert_contains "$PREEXIST_CONTENT" '"defaultMode": "manual"' "Existing defaultMode: manual preserved across setup"
+
+# ------------------------------------------------------------------------------
+# Test 14: Routine Reconciliation Isolation (PRO-55)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 14] Routine Reconciliation Isolation (PRO-55)${RESET}"
+FAKE_HOME="$TMP_TEST_DIR/fake_home"
+TASKS_DIR="$FAKE_HOME/Library/Application Support/Claude/claude-code-sessions/test-acc/test-org"
+mkdir -p "$TASKS_DIR"
+ROUTINE_PROJECT="$TMP_TEST_DIR/routine-proj"
+mkdir -p "$ROUTINE_PROJECT"
+cat << EOF > "$TASKS_DIR/scheduled-tasks.json"
+{
+  "scheduledTasks": [
+    {
+      "id": "job-search-crawl",
+      "cwd": "$ROUTINE_PROJECT",
+      "permissionMode": "default"
+    },
+    {
+      "id": "unrelated-task",
+      "cwd": "$ROUTINE_PROJECT",
+      "permissionMode": "default"
+    },
+    {
+      "id": "job-search-crawl",
+      "cwd": "/some/other/workspace",
+      "permissionMode": "default"
+    }
+  ]
+}
+EOF
+HOME="$FAKE_HOME" "$ROOT_DIR/setup.sh" --claude --directory "$ROUTINE_PROJECT" --resume "$FIXTURE_RESUME" -y >/dev/null
+
+RECON_DATA="$(cat "$TASKS_DIR/scheduled-tasks.json")"
+TASK1_MODE="$(node -e "const d = JSON.parse(process.argv[1]); console.log(d.scheduledTasks[0].permissionMode);" "$RECON_DATA")"
+TASK2_MODE="$(node -e "const d = JSON.parse(process.argv[1]); console.log(d.scheduledTasks[1].permissionMode);" "$RECON_DATA")"
+TASK3_MODE="$(node -e "const d = JSON.parse(process.argv[1]); console.log(d.scheduledTasks[2].permissionMode);" "$RECON_DATA")"
+
+assert_equals "auto" "$TASK1_MODE" "Target workspace job-search task reconciled to auto mode"
+assert_equals "default" "$TASK2_MODE" "Unrelated task in same workspace remains default mode"
+assert_equals "default" "$TASK3_MODE" "Job-search task in other workspace remains default mode"
 
 # ------------------------------------------------------------------------------
 # Summary

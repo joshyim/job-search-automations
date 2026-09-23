@@ -167,7 +167,7 @@ function reconcileClaudeScheduledRoutines(projectDir) {
               let modified = false;
               if (Array.isArray(data.scheduledTasks)) {
                 for (const task of data.scheduledTasks) {
-                  const isJobSearch = (typeof task.id === 'string' && task.id.startsWith('job-search-')) ||
+                  const isJobSearch = (typeof task.id === 'string' && task.id.startsWith('job-search-')) &&
                                       (typeof task.cwd === 'string' && path.resolve(task.cwd) === path.resolve(projectDir));
                   if (isJobSearch && task.permissionMode !== 'auto') {
                     task.permissionMode = 'auto';
@@ -479,14 +479,33 @@ async function handleSetup(args) {
     }
     if (typeof settingsConfig.permissions !== 'object' || settingsConfig.permissions === null) settingsConfig.permissions = {};
     if (!Array.isArray(settingsConfig.permissions.allow)) settingsConfig.permissions.allow = [];
-    settingsConfig.permissions.defaultMode = 'auto';
+    if (typeof settingsConfig.permissions.defaultMode === 'undefined') {
+      settingsConfig.permissions.defaultMode = 'auto';
+    }
 
     const absCrawler = path.join(pluginDir, 'scripts', 'crawl-job-board.js');
+    const absCleanup = path.join(pluginDir, 'scripts', 'cleanup-tmp.js');
     const absTmp = path.join(projectDir, '.job-search', 'tmp');
     const absJobSearch = path.join(projectDir, '.job-search');
 
     let crawlRel = path.relative(projectDir, absCrawler);
     if (!crawlRel.startsWith('.') && !crawlRel.startsWith('/')) crawlRel = `./${crawlRel}`;
+
+    let cleanupRel = path.relative(projectDir, absCleanup);
+    if (!cleanupRel.startsWith('.') && !cleanupRel.startsWith('/')) cleanupRel = `./${cleanupRel}`;
+
+    // Filter out obsolete/overbroad grants if re-running setup
+    const obsoleteGrants = [
+      `Write(${projectDir}/**)`,
+      'Write(./**)',
+      'mcp__job-search-db__*',
+      'mcp__job-search-db__delete_rubric_dimension',
+    ];
+    settingsConfig.permissions.allow = settingsConfig.permissions.allow.filter(g => {
+      if (obsoleteGrants.includes(g)) return false;
+      if (typeof g === 'string' && (g.startsWith('Bash(rm ') || g.startsWith('Bash(tee ') || g.startsWith('Bash(mkdir '))) return false;
+      return true;
+    });
 
     const grants = [
       // Crawler script execution (relative and absolute paths)
@@ -495,65 +514,52 @@ async function handleSetup(args) {
       `Bash(node ${absCrawler}:*)`,
       `Bash(node "${absCrawler}":*)`,
 
-      // Ephemeral tmp directory creation, cleanup, and tee
-      `Bash(mkdir -p ${absTmp}*)`,
-      `Bash(mkdir -p "${absTmp}"*)`,
-      'Bash(mkdir -p ./.job-search/tmp*)',
-      'Bash(mkdir -p .job-search/tmp*)',
-      `Bash(rm -rf ${absTmp}*)`,
-      `Bash(rm -rf "${absTmp}"*)`,
-      'Bash(rm -rf ./.job-search/tmp*)',
-      'Bash(rm -rf .job-search/tmp*)',
-      `Bash(rm -f ${absTmp}/*)`,
-      `Bash(rm -f "${absTmp}"/*)`,
-      `Bash(rm -f ${absTmp}*)`,
-      `Bash(rm -f "${absTmp}"*)`,
-      'Bash(rm -f ./.job-search/tmp/*)',
-      'Bash(rm -f .job-search/tmp/*)',
-      `Bash(tee ${absTmp}/*)`,
-      `Bash(tee "${absTmp}"/*)`,
-      'Bash(tee ./.job-search/tmp/*)',
-      'Bash(tee .job-search/tmp/*)',
+      // Ephemeral cleanup helper (replaces wildcard rm/tee/mkdir)
+      `Bash(node ${cleanupRel}:*)`,
+      `Bash(node ./${cleanupRel.replace(/^\.\//, '')}:*)`,
+      `Bash(node ${absCleanup}:*)`,
+      `Bash(node "${absCleanup}":*)`,
 
-      // Scoped filesystem Read & Write (workspace and .job-search/)
+      // Scoped filesystem Read (workspace root and .job-search/)
       `Read(${projectDir}/**)`,
-      `Write(${projectDir}/**)`,
-      `Read(${absJobSearch}/**)`,
-      `Write(${absJobSearch}/**)`,
       'Read(./**)',
-      'Write(./**)',
+      `Read(${absJobSearch}/**)`,
       'Read(./.job-search/**)',
-      'Write(./.job-search/**)',
       'Read(.job-search/**)',
+
+      // Scoped filesystem Write (strictly .job-search/ only, no workspace-wide Write)
+      `Write(${absJobSearch}/**)`,
+      'Write(./.job-search/**)',
       'Write(.job-search/**)',
 
-      // MCP Database tools (wildcard and all specific tools)
-      'mcp__job-search-db__*',
-      'mcp__job-search-db__add_rubric_dimension',
-      'mcp__job-search-db__add_skill',
+      // MCP Database tools (explicitly enumerated operational tools, no wildcard or delete_rubric_dimension)
+      'mcp__job-search-db__select_workspace',
+      'mcp__job-search-db__get_workspace_info',
+      'mcp__job-search-db__list_companies',
+      'mcp__job-search-db__add_company',
+      'mcp__job-search-db__upsert_company',
+      'mcp__job-search-db__update_company_crawl_status',
+      'mcp__job-search-db__list_title_patterns',
       'mcp__job-search-db__add_title_pattern',
-      'mcp__job-search-db__add_to_queue',
-      'mcp__job-search-db__batch_score_candidates',
-      'mcp__job-search-db__check_url_exists',
-      'mcp__job-search-db__delete_rubric_dimension',
-      'mcp__job-search-db__get_batch',
-      'mcp__job-search-db__get_candidate',
-      'mcp__job-search-db__get_pending_queue',
-      'mcp__job-search-db__get_pipeline_stats',
-      'mcp__job-search-db__get_run_logs',
+      'mcp__job-search-db__list_skills',
+      'mcp__job-search-db__add_skill',
+      'mcp__job-search-db__set_skill_weight',
       'mcp__job-search-db__get_scoring_rubric',
       'mcp__job-search-db__get_skill_rubric',
-      'mcp__job-search-db__list_candidates',
-      'mcp__job-search-db__list_companies',
-      'mcp__job-search-db__list_skills',
-      'mcp__job-search-db__list_title_patterns',
-      'mcp__job-search-db__log_run',
-      'mcp__job-search-db__record_assessment',
-      'mcp__job-search-db__set_skill_weight',
-      'mcp__job-search-db__update_company_crawl_status',
-      'mcp__job-search-db__update_queue_status',
       'mcp__job-search-db__update_rubric_dimension',
-      'mcp__job-search-db__upsert_company',
+      'mcp__job-search-db__add_rubric_dimension',
+      'mcp__job-search-db__get_batch',
+      'mcp__job-search-db__get_pending_queue',
+      'mcp__job-search-db__update_queue_status',
+      'mcp__job-search-db__add_to_queue',
+      'mcp__job-search-db__check_url_exists',
+      'mcp__job-search-db__get_candidate',
+      'mcp__job-search-db__list_candidates',
+      'mcp__job-search-db__batch_score_candidates',
+      'mcp__job-search-db__record_assessment',
+      'mcp__job-search-db__get_pipeline_stats',
+      'mcp__job-search-db__log_run',
+      'mcp__job-search-db__get_run_logs',
 
       // Web discovery and fetch fallback tools
       'WebSearch',
@@ -876,10 +882,10 @@ async function handleSetup(args) {
     if (launchFilePath) console.log(`  Launch Config:     ${BOLD}${launchFilePath}${RESET}`);
     if (settingsFilePath) {
       console.log(`  Permissions:       ${BOLD}${settingsFilePath}${RESET}`);
-      console.log(`                     ${GREEN}✓${RESET} Scoped Read/Write: ${CYAN}${projectDir}/**${RESET} & ${CYAN}.job-search/**${RESET}`);
+      console.log(`                     ${GREEN}✓${RESET} Scoped Read/Write: ${CYAN}${projectDir}/** (Read)${RESET} & ${CYAN}.job-search/** (Read/Write)${RESET}`);
       console.log(`                     ${GREEN}✓${RESET} Crawler Script:    ${CYAN}node .claude/plugins/job-search-automations/scripts/crawl-job-board.js:*${RESET}`);
-      console.log(`                     ${GREEN}✓${RESET} Ephemeral Temp:    ${CYAN}.job-search/tmp/*${RESET} (mkdir, rm, tee)`);
-      console.log(`                     ${GREEN}✓${RESET} MCP Database:      ${CYAN}mcp__job-search-db__*${RESET} (all tools pre-approved)`);
+      console.log(`                     ${GREEN}✓${RESET} Ephemeral Temp:    ${CYAN}node .claude/plugins/job-search-automations/scripts/cleanup-tmp.js:*${RESET} (cleanup-tmp helper)`);
+      console.log(`                     ${GREEN}✓${RESET} MCP Database:      ${CYAN}Operational tools pre-approved (least privilege)${RESET}`);
       console.log(`                     ${GREEN}✓${RESET} Web Access:        ${CYAN}WebSearch${RESET}, ${CYAN}WebFetch${RESET} (fallback discovery)`);
     }
   }
