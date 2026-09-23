@@ -14,13 +14,25 @@
 // - Filters extracted HTML links against non-public destinations
 // - Optional --allow-private override flag for deliberate local test fixtures
 //
+// Hardened against Resource Exhaustion (PRO-60):
+// - Hard request deadlines to prevent indefinite hangs / slowloris
+// - Response size caps (default 5MB) to prevent buffer / OOM attacks
+// - Max redirect hops enforcement (default 5)
+// - Extracted records ceiling (default 250)
+//
 // Usage:
 //   node crawl-job-board.js <url> [--keyword <term>] [--json] [--allow-private]
+//                                [--max-time <sec>] [--max-bytes <bytes>]
+//                                [--max-redirects <n>] [--max-records <n>]
 //
 // Options:
-//   --keyword <term>   Filter listings to those containing <term> (case-insensitive)
-//   --json             Output as JSON array instead of TSV
-//   --allow-private    Allow private/loopback destinations (for testing only)
+//   --keyword <term>       Filter listings to those containing <term> (case-insensitive)
+//   --json                 Output as JSON array instead of TSV
+//   --allow-private        Allow private/loopback destinations (for testing only)
+//   --max-time <seconds>   Maximum time in seconds for HTTP request deadline (default: 15)
+//   --max-bytes <bytes>    Maximum response size in bytes (default: 5242880 = 5MB)
+//   --max-redirects <n>    Maximum number of redirects to follow (default: 5)
+//   --max-records <n>      Maximum number of extracted job records (default: 250)
 //
 // Output (TSV, default):
 //   title\turl
@@ -31,7 +43,7 @@
 // Exit codes:
 //   0  Success
 //   1  Usage error or missing arguments
-//   2  Network or parsing error
+//   2  Network, parsing, or resource limit error
 // ==============================================================================
 
 import net from "node:net";
@@ -39,9 +51,14 @@ import dns from "node:dns";
 import http from "node:http";
 import https from "node:https";
 
+const DEFAULT_MAX_TIME_SEC = 15;
+const DEFAULT_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const DEFAULT_MAX_REDIRECTS = 5;
+const DEFAULT_MAX_RECORDS = 250;
+
 const args = process.argv.slice(2);
 if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
-  console.error("Usage: node crawl-job-board.js <url> [--keyword <term>] [--json] [--allow-private]");
+  console.error("Usage: node crawl-job-board.js <url> [--keyword <term>] [--json] [--allow-private] [--max-time <sec>] [--max-bytes <bytes>] [--max-redirects <n>] [--max-records <n>]");
   process.exit(1);
 }
 
@@ -52,13 +69,53 @@ let allowPrivate =
   process.env.CRAWLER_ALLOW_PRIVATE === "1" ||
   process.env.CRAWLER_ALLOW_PRIVATE === "true";
 
+let maxTimeSeconds = process.env.CRAWLER_MAX_TIME
+  ? parseInt(process.env.CRAWLER_MAX_TIME, 10)
+  : DEFAULT_MAX_TIME_SEC;
+let maxBytes = process.env.CRAWLER_MAX_BYTES
+  ? parseInt(process.env.CRAWLER_MAX_BYTES, 10)
+  : DEFAULT_MAX_BYTES;
+let maxRedirects = process.env.CRAWLER_MAX_REDIRECTS
+  ? parseInt(process.env.CRAWLER_MAX_REDIRECTS, 10)
+  : DEFAULT_MAX_REDIRECTS;
+let maxRecords = process.env.CRAWLER_MAX_RECORDS
+  ? parseInt(process.env.CRAWLER_MAX_RECORDS, 10)
+  : DEFAULT_MAX_RECORDS;
+
 for (let i = 1; i < args.length; i++) {
-  if (args[i] === "--keyword" && args[i + 1]) {
+  const arg = args[i];
+  if (arg === "--keyword" && args[i + 1]) {
     keyword = args[++i].toLowerCase();
-  } else if (args[i] === "--json") {
+  } else if (arg.startsWith("--keyword=")) {
+    keyword = arg.slice("--keyword=".length).toLowerCase();
+  } else if (arg === "--json") {
     jsonOutput = true;
-  } else if (args[i] === "--allow-private" || args[i] === "--allow-local") {
+  } else if (arg === "--allow-private" || arg === "--allow-local") {
     allowPrivate = true;
+  } else if ((arg === "--max-time" || arg === "--timeout") && args[i + 1]) {
+    const val = parseInt(args[++i], 10);
+    if (!isNaN(val) && val > 0) maxTimeSeconds = val;
+  } else if (arg.startsWith("--max-time=") || arg.startsWith("--timeout=")) {
+    const val = parseInt(arg.split("=")[1], 10);
+    if (!isNaN(val) && val > 0) maxTimeSeconds = val;
+  } else if (arg === "--max-bytes" && args[i + 1]) {
+    const val = parseInt(args[++i], 10);
+    if (!isNaN(val) && val > 0) maxBytes = val;
+  } else if (arg.startsWith("--max-bytes=")) {
+    const val = parseInt(arg.slice("--max-bytes=".length), 10);
+    if (!isNaN(val) && val > 0) maxBytes = val;
+  } else if (arg === "--max-redirects" && args[i + 1]) {
+    const val = parseInt(args[++i], 10);
+    if (!isNaN(val) && val >= 0) maxRedirects = val;
+  } else if (arg.startsWith("--max-redirects=")) {
+    const val = parseInt(arg.slice("--max-redirects=".length), 10);
+    if (!isNaN(val) && val >= 0) maxRedirects = val;
+  } else if (arg === "--max-records" && args[i + 1]) {
+    const val = parseInt(args[++i], 10);
+    if (!isNaN(val) && val > 0) maxRecords = val;
+  } else if (arg.startsWith("--max-records=")) {
+    const val = parseInt(arg.slice("--max-records=".length), 10);
+    if (!isNaN(val) && val > 0) maxRecords = val;
   }
 }
 
@@ -243,8 +300,10 @@ function isForbiddenHostname(hostname) {
  * - Returns { status, ok, headers, text(), json() }
  */
 async function safeFetch(urlStr, options = {}) {
-  const maxRedirects = options.maxRedirects ?? 5;
+  const currentMaxRedirects = options.maxRedirects ?? maxRedirects;
   const isAllowPrivate = options.allowPrivate ?? allowPrivate;
+  const currentMaxBytes = options.maxBytes ?? maxBytes;
+  const timeoutMs = (options.maxTime || options.timeout ? (options.maxTime || options.timeout) * 1000 : maxTimeSeconds * 1000);
   let currentUrlStr = urlStr;
   let redirectCount = 0;
 
@@ -309,6 +368,16 @@ async function safeFetch(urlStr, options = {}) {
     };
 
     const response = await new Promise((resolve, reject) => {
+      let completed = false;
+      const deadlineTimer = setTimeout(() => {
+        if (!completed) {
+          completed = true;
+          const err = new Error(`Request deadline exceeded (${timeoutMs}ms)`);
+          req.destroy(err);
+          reject(err);
+        }
+      }, timeoutMs);
+
       const transport = isHttps ? https : http;
       const requestOptions = {
         protocol: url.protocol,
@@ -320,15 +389,52 @@ async function safeFetch(urlStr, options = {}) {
           "User-Agent": options.userAgent || USER_AGENT,
           ...options.headers,
         },
-        timeout: options.timeout || 15000,
         lookup: isLiteralIp ? undefined : safeLookup,
         servername: isHttps && !isLiteralIp ? hostname : undefined,
       };
 
       const req = transport.request(requestOptions, (res) => {
+        // Content-Length check
+        const contentLengthHeader = res.headers["content-length"];
+        if (contentLengthHeader) {
+          const contentLength = parseInt(contentLengthHeader, 10);
+          if (!isNaN(contentLength) && contentLength > currentMaxBytes) {
+            completed = true;
+            clearTimeout(deadlineTimer);
+            res.destroy();
+            req.destroy();
+            return reject(
+              new Error(
+                `Response size (${contentLength} bytes) exceeds limit of ${currentMaxBytes} bytes`
+              )
+            );
+          }
+        }
+
         const chunks = [];
-        res.on("data", (chunk) => chunks.push(chunk));
+        let bytesReceived = 0;
+
+        res.on("data", (chunk) => {
+          if (completed) return;
+          bytesReceived += chunk.length;
+          if (bytesReceived > currentMaxBytes) {
+            completed = true;
+            clearTimeout(deadlineTimer);
+            res.destroy();
+            req.destroy();
+            return reject(
+              new Error(
+                `Response size exceeded limit of ${currentMaxBytes} bytes`
+              )
+            );
+          }
+          chunks.push(chunk);
+        });
+
         res.on("end", () => {
+          if (completed) return;
+          completed = true;
+          clearTimeout(deadlineTimer);
           const bodyBuffer = Buffer.concat(chunks);
           resolve({
             status: res.statusCode,
@@ -338,12 +444,28 @@ async function safeFetch(urlStr, options = {}) {
             json: async () => JSON.parse(bodyBuffer.toString("utf8")),
           });
         });
+
+        res.on("error", (err) => {
+          if (completed) return;
+          completed = true;
+          clearTimeout(deadlineTimer);
+          reject(err);
+        });
       });
 
       req.on("timeout", () => {
-        req.destroy(new Error(`Request timed out after ${options.timeout || 15000}ms`));
+        if (!completed) {
+          completed = true;
+          clearTimeout(deadlineTimer);
+          const err = new Error(`Request timed out after ${timeoutMs}ms`);
+          req.destroy(err);
+          reject(err);
+        }
       });
       req.on("error", (err) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(deadlineTimer);
         reject(err);
       });
       req.end();
@@ -356,8 +478,8 @@ async function safeFetch(urlStr, options = {}) {
         return response;
       }
       redirectCount++;
-      if (redirectCount > maxRedirects) {
-        throw new Error(`Maximum redirect limit (${maxRedirects}) exceeded`);
+      if (redirectCount > currentMaxRedirects) {
+        throw new Error(`Maximum redirect limit (${currentMaxRedirects}) exceeded`);
       }
       currentUrlStr = new URL(location, currentUrlStr).href;
       continue;
@@ -404,23 +526,40 @@ async function crawlGreenhouse(parsedUrl, options = {}) {
   if (!boardToken) return null;
 
   const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs`;
+  const effectiveMaxRecords = options.maxRecords || maxRecords;
 
   try {
     const res = await safeFetch(apiUrl, {
       userAgent: USER_AGENT,
-      allowPrivate: options.allowPrivate,
+      allowPrivate: options.allowPrivate ?? allowPrivate,
+      maxBytes: options.maxBytes ?? maxBytes,
+      timeout: options.maxTime || options.timeout,
+      maxRedirects: options.maxRedirects ?? maxRedirects,
     });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.jobs || !Array.isArray(data.jobs)) return null;
 
-    return data.jobs.map((job) => ({
+    const jobs = data.jobs.slice(0, effectiveMaxRecords);
+    return jobs.map((job) => ({
       title: job.title.trim(),
       url:
         job.absolute_url ||
         `https://boards.greenhouse.io/${boardToken}/jobs/${job.id}`,
     }));
-  } catch {
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("forbidden") ||
+        err.message.includes("Forbidden") ||
+        err.message.includes("Invalid") ||
+        err.message.includes("exceeded") ||
+        err.message.includes("limit") ||
+        err.message.includes("timed out") ||
+        err.message.includes("deadline"))
+    ) {
+      throw err;
+    }
     return null;
   }
 }
@@ -433,21 +572,38 @@ async function crawlLever(parsedUrl, options = {}) {
   if (!match || !match[1]) return null;
   const boardToken = match[1];
   const apiUrl = `https://api.lever.co/v0/postings/${boardToken}?mode=json`;
+  const effectiveMaxRecords = options.maxRecords || maxRecords;
 
   try {
     const res = await safeFetch(apiUrl, {
       userAgent: USER_AGENT,
-      allowPrivate: options.allowPrivate,
+      allowPrivate: options.allowPrivate ?? allowPrivate,
+      maxBytes: options.maxBytes ?? maxBytes,
+      timeout: options.maxTime || options.timeout,
+      maxRedirects: options.maxRedirects ?? maxRedirects,
     });
     if (!res.ok) return null;
     const postings = await res.json();
     if (!Array.isArray(postings)) return null;
 
-    return postings.map((job) => ({
+    const sliced = postings.slice(0, effectiveMaxRecords);
+    return sliced.map((job) => ({
       title: (job.text || job.title || "").trim(),
       url: job.hostedUrl || `https://jobs.lever.co/${boardToken}/${job.id}`,
     }));
-  } catch {
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("forbidden") ||
+        err.message.includes("Forbidden") ||
+        err.message.includes("Invalid") ||
+        err.message.includes("exceeded") ||
+        err.message.includes("limit") ||
+        err.message.includes("timed out") ||
+        err.message.includes("deadline"))
+    ) {
+      throw err;
+    }
     return null;
   }
 }
@@ -460,21 +616,38 @@ async function crawlAshby(parsedUrl, options = {}) {
   if (!match || !match[1]) return null;
   const boardToken = match[1];
   const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${boardToken}`;
+  const effectiveMaxRecords = options.maxRecords || maxRecords;
 
   try {
     const res = await safeFetch(apiUrl, {
       userAgent: USER_AGENT,
-      allowPrivate: options.allowPrivate,
+      allowPrivate: options.allowPrivate ?? allowPrivate,
+      maxBytes: options.maxBytes ?? maxBytes,
+      timeout: options.maxTime || options.timeout,
+      maxRedirects: options.maxRedirects ?? maxRedirects,
     });
     if (!res.ok) return null;
     const data = await res.json();
     if (!data.jobs || !Array.isArray(data.jobs)) return null;
 
-    return data.jobs.map((job) => ({
+    const jobs = data.jobs.slice(0, effectiveMaxRecords);
+    return jobs.map((job) => ({
       title: job.title.trim(),
       url: job.jobUrl || `https://jobs.ashbyhq.com/${boardToken}/${job.id}`,
     }));
-  } catch {
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("forbidden") ||
+        err.message.includes("Forbidden") ||
+        err.message.includes("Invalid") ||
+        err.message.includes("exceeded") ||
+        err.message.includes("limit") ||
+        err.message.includes("timed out") ||
+        err.message.includes("deadline"))
+    ) {
+      throw err;
+    }
     return null;
   }
 }
@@ -484,9 +657,13 @@ async function crawlAshby(parsedUrl, options = {}) {
  */
 async function crawlHtml(url, options = {}) {
   const isAllowPrivate = options.allowPrivate ?? allowPrivate;
+  const effectiveMaxRecords = options.maxRecords || maxRecords;
   const res = await safeFetch(url, {
     userAgent: USER_AGENT,
     allowPrivate: isAllowPrivate,
+    maxBytes: options.maxBytes ?? maxBytes,
+    timeout: options.maxTime || options.timeout,
+    maxRedirects: options.maxRedirects ?? maxRedirects,
   });
   if (!res.ok) {
     throw new Error(`HTTP ${res.status}: ${res.statusText || res.status}`);
@@ -501,6 +678,9 @@ async function crawlHtml(url, options = {}) {
   let match;
 
   while ((match = linkRegex.exec(html)) !== null) {
+    if (results.length >= effectiveMaxRecords) {
+      break;
+    }
     const rawHref = match[1];
     const innerHtml = match[2];
     const text = cleanText(innerHtml);
@@ -568,6 +748,13 @@ async function crawlHtml(url, options = {}) {
 }
 
 (async () => {
+  const overallTimeoutMs = Math.max(maxTimeSeconds * 2000, 30000); // at least 30s overall
+  const overallTimer = setTimeout(() => {
+    console.error(`Error: Crawler overall execution timeout exceeded (${Math.round(overallTimeoutMs / 1000)}s)`);
+    process.exit(2);
+  }, overallTimeoutMs);
+  overallTimer.unref();
+
   try {
     let parsedTarget;
     try {
@@ -587,29 +774,41 @@ async function crawlHtml(url, options = {}) {
     let listings = null;
     const targetHost = parsedTarget.hostname.toLowerCase();
 
+    const crawlOpts = {
+      allowPrivate,
+      maxBytes,
+      maxTime: maxTimeSeconds,
+      maxRedirects,
+      maxRecords,
+    };
+
     // 1. Check specialized ATS endpoints using parsed hostname
     if (targetHost === "greenhouse.io" || targetHost.endsWith(".greenhouse.io")) {
-      listings = await crawlGreenhouse(parsedTarget, { allowPrivate });
+      listings = await crawlGreenhouse(parsedTarget, crawlOpts);
     } else if (targetHost === "lever.co" || targetHost.endsWith(".lever.co")) {
-      listings = await crawlLever(parsedTarget, { allowPrivate });
+      listings = await crawlLever(parsedTarget, crawlOpts);
     } else if (targetHost === "ashbyhq.com" || targetHost.endsWith(".ashbyhq.com")) {
-      listings = await crawlAshby(parsedTarget, { allowPrivate });
+      listings = await crawlAshby(parsedTarget, crawlOpts);
     }
 
     // 2. Generic HTTP fetch if not ATS or ATS returned null
     if (!listings || listings.length === 0) {
       try {
-        const htmlResults = await crawlHtml(targetUrl, { allowPrivate });
+        const htmlResults = await crawlHtml(targetUrl, crawlOpts);
         if (htmlResults && htmlResults.length > 0) {
           listings = htmlResults;
         }
       } catch (err) {
-        // If an SSRF or security restriction occurred, rethrow so it fails visibly
+        // If an SSRF, security restriction, or resource limit occurred, rethrow so it fails visibly
         if (
           err.message &&
           (err.message.includes("forbidden") ||
             err.message.includes("Forbidden") ||
-            err.message.includes("Invalid"))
+            err.message.includes("Invalid") ||
+            err.message.includes("exceeded") ||
+            err.message.includes("limit") ||
+            err.message.includes("timed out") ||
+            err.message.includes("deadline"))
         ) {
           throw err;
         }
@@ -627,6 +826,11 @@ async function crawlHtml(url, options = {}) {
       );
     }
 
+    // Apply maxRecords ceiling to final output
+    if (filtered.length > maxRecords) {
+      filtered = filtered.slice(0, maxRecords);
+    }
+
     if (jsonOutput) {
       console.log(JSON.stringify(filtered, null, 2));
     } else {
@@ -642,8 +846,10 @@ async function crawlHtml(url, options = {}) {
     } else {
       console.error(`Found ${filtered.length} listing(s)`);
     }
+    clearTimeout(overallTimer);
     process.exit(0);
   } catch (err) {
+    clearTimeout(overallTimer);
     console.error(`Error crawling ${targetUrl}: ${err.message}`);
     process.exit(2);
   }

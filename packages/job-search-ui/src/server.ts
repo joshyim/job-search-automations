@@ -50,11 +50,34 @@ const ALLOWED_DASHBOARD_TOOLS = new Set([
   'get_recent_runs',
 ]);
 
+const DEFAULT_MAX_BODY_SIZE = 1 * 1024 * 1024; // 1 MB default
+const DEFAULT_REQUEST_TIMEOUT_MS = 30000; // 30 seconds
+const DEFAULT_BODY_TIMEOUT_MS = 10000; // 10 seconds
+
+class PayloadTooLargeError extends Error {
+  public statusCode = 413;
+  constructor(message = 'Payload Too Large: Request body exceeds limit') {
+    super(message);
+    this.name = 'PayloadTooLargeError';
+  }
+}
+
+class RequestTimeoutError extends Error {
+  public statusCode = 408;
+  constructor(message = 'Request Timeout: Stream read timed out') {
+    super(message);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
 interface ServerOptions {
   port: number;
   configPath?: string;
   directory?: string;
   token?: string;
+  maxBodySize?: number;
+  requestTimeoutMs?: number;
+  bodyTimeoutMs?: number;
 }
 
 const DEFAULT_PORT = 3847;
@@ -65,6 +88,9 @@ function parseArgs(): ServerOptions {
   let configPath: string | undefined = process.env.JOB_SEARCH_CONFIG_PATH;
   let directory: string | undefined = process.env.JOB_SEARCH_WORKSPACE;
   let token: string | undefined = process.env.JOB_SEARCH_UI_TOKEN;
+  let maxBodySize: number | undefined = process.env.JOB_SEARCH_UI_MAX_BODY_SIZE
+    ? parseInt(process.env.JOB_SEARCH_UI_MAX_BODY_SIZE, 10)
+    : undefined;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -88,6 +114,17 @@ function parseArgs(): ServerOptions {
       i++;
     } else if (arg.startsWith('--token=')) {
       token = arg.slice('--token='.length);
+    } else if (arg === '--max-body-size' && args[i + 1]) {
+      const parsedSize = parseInt(args[i + 1], 10);
+      if (!isNaN(parsedSize) && parsedSize > 0) {
+        maxBodySize = parsedSize;
+      }
+      i++;
+    } else if (arg.startsWith('--max-body-size=')) {
+      const parsedSize = parseInt(arg.slice('--max-body-size='.length), 10);
+      if (!isNaN(parsedSize) && parsedSize > 0) {
+        maxBodySize = parsedSize;
+      }
     }
   }
 
@@ -101,7 +138,7 @@ function parseArgs(): ServerOptions {
     }
   }
 
-  return { port, configPath, directory, token };
+  return { port, configPath, directory, token, maxBodySize };
 }
 
 class JobSearchUIServer {
@@ -334,14 +371,57 @@ class JobSearchUIServer {
 
   private async readJsonBody(req: http.IncomingMessage): Promise<any> {
     return new Promise((resolve, reject) => {
-      let body = '';
-      req.on('data', chunk => {
-        body += chunk;
-        if (body.length > 10 * 1024 * 1024) {
-          reject(new Error('Payload too large'));
+      const maxLimit = this.options.maxBodySize || DEFAULT_MAX_BODY_SIZE;
+      const timeoutMs = this.options.bodyTimeoutMs || DEFAULT_BODY_TIMEOUT_MS;
+
+      // Early check on Content-Length header if provided
+      const contentLengthHeader = req.headers['content-length'];
+      if (contentLengthHeader) {
+        const contentLength = parseInt(contentLengthHeader, 10);
+        if (!isNaN(contentLength) && contentLength > maxLimit) {
+          req.pause();
+          req.removeAllListeners('data');
+          reject(new PayloadTooLargeError(`Payload Too Large: Content-Length ${contentLength} exceeds ${maxLimit} bytes limit`));
+          return;
         }
-      });
-      req.on('end', () => {
+      }
+
+      let body = '';
+      let bytesReceived = 0;
+      let completed = false;
+
+      const timer = setTimeout(() => {
+        if (!completed) {
+          completed = true;
+          req.removeAllListeners('data');
+          req.removeAllListeners('end');
+          req.pause();
+          reject(new RequestTimeoutError(`Request Timeout: Request body was not received within ${timeoutMs}ms`));
+        }
+      }, timeoutMs);
+
+      const onData = (chunk: Buffer | string) => {
+        if (completed) return;
+        const chunkLen = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+        bytesReceived += chunkLen;
+
+        if (bytesReceived > maxLimit) {
+          completed = true;
+          clearTimeout(timer);
+          req.removeListener('data', onData);
+          req.removeListener('end', onEnd);
+          req.pause();
+          reject(new PayloadTooLargeError(`Payload Too Large: Request body exceeds ${maxLimit} bytes limit`));
+          return;
+        }
+
+        body += chunk;
+      };
+
+      const onEnd = () => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timer);
         if (!body.trim()) {
           resolve({});
           return;
@@ -351,8 +431,18 @@ class JobSearchUIServer {
         } catch (e: any) {
           reject(new Error(`Invalid JSON payload: ${e.message}`));
         }
-      });
-      req.on('error', reject);
+      };
+
+      const onError = (err: any) => {
+        if (completed) return;
+        completed = true;
+        clearTimeout(timer);
+        reject(err);
+      };
+
+      req.on('data', onData);
+      req.on('end', onEnd);
+      req.on('error', onError);
     });
   }
 
@@ -518,8 +608,24 @@ class JobSearchUIServer {
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true, data }));
         } catch (err: any) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: err.message }));
+          const isTooLarge = err.statusCode === 413 || err instanceof PayloadTooLargeError;
+          const isTimeout = err.statusCode === 408 || err instanceof RequestTimeoutError;
+          const statusCode = isTooLarge ? 413 : isTimeout ? 408 : 500;
+
+          res.writeHead(statusCode, {
+            'Content-Type': 'application/json',
+            ...(isTooLarge || isTimeout ? { Connection: 'close' } : {}),
+          });
+          res.end(JSON.stringify({ success: false, error: err.message }), () => {
+            if (isTooLarge || isTimeout) {
+              req.destroy();
+            }
+          });
+          if (isTooLarge || isTimeout) {
+            setTimeout(() => {
+              if (!req.destroyed) req.destroy();
+            }, 50);
+          }
         }
         return;
       }
@@ -527,6 +633,10 @@ class JobSearchUIServer {
       // Static files
       this.handleStatic(req, res);
     });
+
+    this.httpServer.requestTimeout = this.options.requestTimeoutMs || DEFAULT_REQUEST_TIMEOUT_MS;
+    this.httpServer.headersTimeout = 10000;
+    this.httpServer.keepAliveTimeout = 5000;
 
     const MAX_PORT_RETRIES = 100;
 
@@ -614,4 +724,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
   main();
 }
 
-export { JobSearchUIServer };
+export {
+  JobSearchUIServer,
+  PayloadTooLargeError,
+  RequestTimeoutError,
+  DEFAULT_MAX_BODY_SIZE,
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  DEFAULT_BODY_TIMEOUT_MS,
+};

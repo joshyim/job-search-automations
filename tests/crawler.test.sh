@@ -172,6 +172,79 @@ else
   fi
 fi
 
+# 6. Resource Limits & Hang Prevention (PRO-60)
+echo -e "\n${BOLD}--- 6. Resource Limits & Hang Prevention (PRO-60) ---${RESET}"
+
+RESOURCE_LIMIT_SCRIPT="
+import http from 'node:http';
+import { exec } from 'node:child_process';
+
+// 1. Byte Size Limit Cap Test
+const s1 = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end('x'.repeat(100000));
+}).listen(0, '127.0.0.1', () => {
+  const p1 = s1.address().port;
+  exec('node scripts/crawl-job-board.js http://127.0.0.1:' + p1 + ' --max-bytes 50000 --allow-private --json', (err1, stdout1, stderr1) => {
+    const bytesRejected = err1 !== null && stderr1.includes('Response size exceeded limit');
+    s1.close();
+
+    // 2. Request Deadline Timeout Test
+    const s2 = http.createServer((req, res) => {
+      // Intentionally stall / never respond
+    }).listen(0, '127.0.0.1', () => {
+      const p2 = s2.address().port;
+      exec('node scripts/crawl-job-board.js http://127.0.0.1:' + p2 + ' --max-time 1 --allow-private --json', (err2, stdout2, stderr2) => {
+        const deadlineExpired = err2 !== null && stderr2.includes('Request deadline exceeded');
+        s2.close();
+
+        // 3. Max Redirects Cap Test
+        const s3 = http.createServer((req, res) => {
+          res.writeHead(302, { 'Location': '/loop' });
+          res.end();
+        }).listen(0, '127.0.0.1', () => {
+          const p3 = s3.address().port;
+          exec('node scripts/crawl-job-board.js http://127.0.0.1:' + p3 + ' --max-redirects 3 --allow-private --json', (err3, stdout3, stderr3) => {
+            const redirectCapped = err3 !== null && stderr3.includes('Maximum redirect limit (3) exceeded');
+            s3.close();
+
+            // 4. Max Records Cap Test
+            const links = Array.from({ length: 30 }, (_, i) => '<a href=\"/jobs/' + i + '\">Role ' + i + '</a>').join('');
+            const s4 = http.createServer((req, res) => {
+              res.writeHead(200, { 'Content-Type': 'text/html' });
+              res.end('<html><body>' + links + '</body></html>');
+            }).listen(0, '127.0.0.1', () => {
+              const p4 = s4.address().port;
+              exec('node scripts/crawl-job-board.js http://127.0.0.1:' + p4 + ' --max-records 5 --allow-private --json', (err4, stdout4, stderr4) => {
+                let recordsCapped = false;
+                try {
+                  const arr = JSON.parse(stdout4 || '[]');
+                  recordsCapped = arr.length === 5;
+                } catch {}
+                s4.close();
+
+                console.log(JSON.stringify({
+                  bytesRejected,
+                  deadlineExpired,
+                  redirectCapped,
+                  recordsCapped,
+                }));
+              });
+            });
+          });
+        });
+      });
+    });
+  });
+});
+"
+
+RESOURCE_RESULT=$(cd "$ROOT_DIR" && node -e "$RESOURCE_LIMIT_SCRIPT")
+assert_contains "$RESOURCE_RESULT" '"bytesRejected":true' "Crawler rejects response exceeding --max-bytes limit"
+assert_contains "$RESOURCE_RESULT" '"deadlineExpired":true' "Crawler aborts hanging request when exceeding --max-time deadline"
+assert_contains "$RESOURCE_RESULT" '"redirectCapped":true' "Crawler aborts when exceeding --max-redirects limit"
+assert_contains "$RESOURCE_RESULT" '"recordsCapped":true' "Crawler caps extracted listings to --max-records"
+
 echo ""
 echo "=============================================================="
 echo -e "Results: ${GREEN}${TEST_PASSED} passed${RESET}, ${RED}${TEST_FAILED} failed${RESET}"

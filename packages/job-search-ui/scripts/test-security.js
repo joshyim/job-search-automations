@@ -411,7 +411,97 @@ async function runTests() {
     );
   }
 
-  console.log('\n🎉 ALL 8 SECURITY TEST SUITES PASSED SUCCESSFULLY!\n');
+  // 10. Test Resource Limits, Stream Abort & HTTP 413 (PRO-60)
+  console.log('\n[Test 9] Resource Limits & Stream Abort Enforcement (PRO-60)');
+  {
+    // A. Rejection via Content-Length header exceeding 1 MB
+    const oversizedContentLengthRes = await rawRequest({
+      method: 'POST',
+      path: '/api/mcp/call-tool',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionToken,
+        'Content-Length': '2097152', // 2 MB
+      },
+      body: '{"name":"list_companies"}',
+    });
+    assert(oversizedContentLengthRes.status === 413, 'Rejects Content-Length > 1MB with 413 Payload Too Large');
+    assert(
+      oversizedContentLengthRes.json?.error?.includes('Payload Too Large'),
+      'Returns descriptive Payload Too Large error message on header check'
+    );
+
+    // B. Rejection via streaming chunks exceeding 1 MB (chunked transfer)
+    const streamedOversized = await new Promise((resolve) => {
+      const clientReq = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: TEST_PORT,
+          path: '/api/mcp/call-tool',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Session-Token': sessionToken,
+            'Transfer-Encoding': 'chunked',
+          },
+        },
+        (res) => {
+          let resBody = '';
+          res.on('data', (c) => (resBody += c));
+          res.on('end', () => {
+            let json = null;
+            try {
+              json = JSON.parse(resBody);
+            } catch {}
+            resolve({ status: res.statusCode, headers: res.headers, json });
+          });
+        }
+      );
+      clientReq.on('error', (err) => {
+        // Handle socket reset or connection closed cleanly
+        resolve({ status: null, error: err.message });
+      });
+
+      // Stream chunks until > 1 MB
+      clientReq.write('{"name":"list_companies","arguments":{"pad":"');
+      const paddingChunk = 'a'.repeat(64 * 1024); // 64 KB per chunk
+      for (let i = 0; i < 20; i++) { // ~1.28 MB total
+        try {
+          clientReq.write(paddingChunk);
+        } catch {
+          break;
+        }
+      }
+      try {
+        clientReq.write('"}}');
+        clientReq.end();
+      } catch {}
+    });
+
+    assert(
+      streamedOversized.status === 413,
+      `Rejects streaming chunks exceeding 1MB with 413 Payload Too Large (got ${streamedOversized.status})`
+    );
+    assert(
+      streamedOversized.json?.error?.includes('Payload Too Large'),
+      'Returns descriptive Payload Too Large error message on stream abort'
+    );
+
+    // C. Normal-sized valid requests continue to work
+    const normalRes = await rawRequest({
+      method: 'POST',
+      path: '/api/mcp/call-tool',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Token': sessionToken,
+      },
+      body: JSON.stringify({ name: 'list_companies', arguments: {} }),
+    });
+    assert(normalRes.status === 200, 'Normal-sized valid request succeeds with 200 OK');
+    assert(normalRes.json?.success === true, 'Normal request returns success: true');
+  }
+
+  console.log('\n🎉 ALL 9 SECURITY TEST SUITES PASSED SUCCESSFULLY!\n');
 }
 
 runTests()
