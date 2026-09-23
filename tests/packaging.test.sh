@@ -1230,9 +1230,27 @@ else
   fail "UI server did not emit warning when no workspace was detected. Log: $(cat "$NOWS_LOG" 2>/dev/null)"
 fi
 
-# Query /api/mcp/call-tool and ensure it returns HTTP 500 with success: false
+# Query /api/mcp/call-tool without token and ensure it returns HTTP 401
+UNAUTH_RES=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://127.0.0.1:3993/api/mcp/call-tool \
+  -H "Content-Type: application/json" \
+  -d '{"name": "list_companies", "arguments": {}}' 2>/dev/null || true)
+
+UNAUTH_HTTP_CODE=$(echo "$UNAUTH_RES" | grep "HTTP_STATUS:" | cut -d':' -f2)
+UNAUTH_BODY=$(echo "$UNAUTH_RES" | grep -v "HTTP_STATUS:")
+
+if [ "$UNAUTH_HTTP_CODE" = "401" ] && [[ "$UNAUTH_BODY" =~ \"success\":false ]]; then
+  pass "/api/mcp/call-tool rejects unauthenticated requests with HTTP 401"
+else
+  fail "Expected HTTP 401 for unauthenticated call-tool. Got code $UNAUTH_HTTP_CODE: $UNAUTH_BODY"
+fi
+
+# Extract session token from /index.html and query /api/mcp/call-tool with token
+HTML_RES=$(curl -s http://127.0.0.1:3993/)
+UI_TOKEN=$(echo "$HTML_RES" | grep -o '__DASHBOARD_TOKEN__ = "[^"]*"' | head -n1 | cut -d'"' -f2)
+
 CALL_RES=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST http://127.0.0.1:3993/api/mcp/call-tool \
   -H "Content-Type: application/json" \
+  -H "X-Session-Token: $UI_TOKEN" \
   -d '{"name": "list_companies", "arguments": {}}' 2>/dev/null || true)
 
 HTTP_CODE=$(echo "$CALL_RES" | grep "HTTP_STATUS:" | cut -d':' -f2)

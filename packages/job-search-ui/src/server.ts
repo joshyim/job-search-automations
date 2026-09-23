@@ -2,6 +2,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -26,10 +27,34 @@ const MIME_TYPES: Record<string, string> = {
   '.ico': 'image/x-icon',
 };
 
+// Strict allowlist of tools accessible via dashboard HTTP bridge
+const ALLOWED_DASHBOARD_TOOLS = new Set([
+  'list_companies',
+  'add_company',
+  'update_company',
+  'exclude_company',
+  'list_title_patterns',
+  'add_title_pattern',
+  'remove_title_pattern',
+  'list_skills',
+  'add_skill',
+  'update_skill',
+  'remove_skill',
+  'get_scoring_rubric',
+  'add_rubric_dimension',
+  'update_rubric_dimension',
+  'remove_rubric_dimension',
+  'list_queue',
+  'get_candidates',
+  'update_candidate_status',
+  'get_recent_runs',
+]);
+
 interface ServerOptions {
   port: number;
   configPath?: string;
   directory?: string;
+  token?: string;
 }
 
 const DEFAULT_PORT = 3847;
@@ -39,6 +64,7 @@ function parseArgs(): ServerOptions {
   let rawPort: string | undefined = process.env.PORT;
   let configPath: string | undefined = process.env.JOB_SEARCH_CONFIG_PATH;
   let directory: string | undefined = process.env.JOB_SEARCH_WORKSPACE;
+  let token: string | undefined = process.env.JOB_SEARCH_UI_TOKEN;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
@@ -57,6 +83,11 @@ function parseArgs(): ServerOptions {
       i++;
     } else if (arg.startsWith('--directory=')) {
       directory = arg.slice('--directory='.length);
+    } else if (arg === '--token' && args[i + 1]) {
+      token = args[i + 1];
+      i++;
+    } else if (arg.startsWith('--token=')) {
+      token = arg.slice('--token='.length);
     }
   }
 
@@ -70,7 +101,7 @@ function parseArgs(): ServerOptions {
     }
   }
 
-  return { port, configPath, directory };
+  return { port, configPath, directory, token };
 }
 
 class JobSearchUIServer {
@@ -79,9 +110,25 @@ class JobSearchUIServer {
   private mcpTransport: StdioClientTransport | null = null;
   private httpServer: http.Server | null = null;
   private isConnected = false;
+  private sessionToken: string;
+  private configuredWorkspaceDir?: string;
 
   constructor(options: ServerOptions) {
     this.options = options;
+    // Session token is strictly in-memory per server process lifecycle
+    this.sessionToken = options.token || process.env.JOB_SEARCH_UI_TOKEN || crypto.randomBytes(24).toString('hex');
+  }
+
+  public getSessionToken(): string {
+    return this.sessionToken;
+  }
+
+  private isValidToken(providedToken?: string | null): boolean {
+    if (!providedToken || typeof providedToken !== 'string') return false;
+    const providedBuf = Buffer.from(providedToken);
+    const expectedBuf = Buffer.from(this.sessionToken);
+    if (providedBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(providedBuf, expectedBuf);
   }
 
   private async initMcpClient(): Promise<void> {
@@ -123,6 +170,10 @@ class JobSearchUIServer {
 
     const targetDir = this.options.directory || process.env.JOB_SEARCH_WORKSPACE || detectWorkspace();
     const activeCfg = this.options.configPath || process.env.JOB_SEARCH_CONFIG_PATH;
+
+    if (targetDir) {
+      this.configuredWorkspaceDir = path.resolve(targetDir);
+    }
 
     if (!targetDir && !activeCfg) {
       console.warn(
@@ -216,17 +267,39 @@ class JobSearchUIServer {
       return;
     }
 
+    const serveIndexHtml = () => {
+      const indexPath = path.join(PUBLIC_DIR, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        try {
+          const raw = fs.readFileSync(indexPath, 'utf-8');
+          const scriptInjection = `<script>window.__DASHBOARD_TOKEN__ = ${JSON.stringify(this.sessionToken)};</script>\n</head>`;
+          const injected = raw.includes('</head>')
+            ? raw.replace('</head>', scriptInjection)
+            : `${raw}\n${scriptInjection}`;
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Set-Cookie': `dashboard_token=${this.sessionToken}; Path=/; SameSite=Strict`,
+          });
+          res.end(injected);
+        } catch {
+          res.writeHead(500, { 'Content-Type': 'text/plain' });
+          res.end('Internal Server Error');
+        }
+      } else {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+      }
+    };
+
     fs.stat(filePath, (err, stats) => {
       if (err || !stats.isFile()) {
         // SPA Fallback: serve index.html for navigation routes
-        const indexPath = path.join(PUBLIC_DIR, 'index.html');
-        if (fs.existsSync(indexPath)) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          fs.createReadStream(indexPath).pipe(res);
-        } else {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
-          res.end('Not Found');
-        }
+        serveIndexHtml();
+        return;
+      }
+
+      if (path.basename(filePath) === 'index.html') {
+        serveIndexHtml();
         return;
       }
 
@@ -265,10 +338,53 @@ class JobSearchUIServer {
     await this.initMcpClient();
 
     this.httpServer = http.createServer(async (req, res) => {
-      // CORS headers for local development
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      const activePort = this.options.port;
+
+      // 1. Host Header Validation (mitigate DNS rebinding)
+      const rawHost = req.headers.host || '';
+      const allowedHosts = new Set([
+        `localhost:${activePort}`,
+        `127.0.0.1:${activePort}`,
+        `[::1]:${activePort}`,
+        'localhost',
+        '127.0.0.1',
+        '[::1]',
+      ]);
+      if (!rawHost || !allowedHosts.has(rawHost)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Forbidden: Invalid Host header' }));
+        return;
+      }
+
+      // 2. Origin Header Validation (no wildcard CORS)
+      const rawOrigin = req.headers.origin;
+      let isAllowedOrigin = false;
+      if (rawOrigin) {
+        try {
+          const parsed = new URL(rawOrigin);
+          const isLocalhostHost = parsed.hostname === 'localhost' ||
+                                  parsed.hostname === '127.0.0.1' ||
+                                  parsed.hostname === '[::1]';
+          const isMatchingPort = parsed.port === '' || String(parsed.port) === String(activePort);
+          if (isLocalhostHost && isMatchingPort) {
+            isAllowedOrigin = true;
+          }
+        } catch {
+          isAllowedOrigin = false;
+        }
+
+        if (!isAllowedOrigin) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Forbidden: Cross-origin request not allowed' }));
+          return;
+        }
+
+        // Return restricted CORS headers strictly echoing the validated localhost origin
+        res.setHeader('Access-Control-Allow-Origin', rawOrigin);
+        res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Session-Token, Authorization');
+        res.setHeader('Vary', 'Origin');
+      }
 
       if (req.method === 'OPTIONS') {
         res.writeHead(204);
@@ -278,6 +394,19 @@ class JobSearchUIServer {
 
       const url = req.url || '/';
       const cleanUrl = url.split('?')[0];
+
+      // Helper to extract session token from custom header or bearer Authorization
+      const getProvidedToken = (): string | undefined => {
+        const headerToken = req.headers['x-session-token'];
+        if (typeof headerToken === 'string' && headerToken.trim()) {
+          return headerToken.trim();
+        }
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+          return authHeader.slice('Bearer '.length).trim();
+        }
+        return undefined;
+      };
 
       // API Routes
       if (cleanUrl === '/api/health' && req.method === 'GET') {
@@ -291,10 +420,17 @@ class JobSearchUIServer {
       }
 
       if (cleanUrl === '/api/mcp/tools' && req.method === 'GET') {
+        if (!this.isValidToken(getProvidedToken())) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Unauthorized: Missing or invalid session token' }));
+          return;
+        }
+
         try {
           const tools = await this.mcpClient?.listTools();
+          const filtered = (tools?.tools || []).filter(t => ALLOWED_DASHBOARD_TOOLS.has(t.name));
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, tools: tools?.tools || [] }));
+          res.end(JSON.stringify({ success: true, tools: filtered }));
         } catch (err: any) {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, error: err.message }));
@@ -303,16 +439,55 @@ class JobSearchUIServer {
       }
 
       if (cleanUrl === '/api/mcp/call-tool' && req.method === 'POST') {
+        // Enforce Content-Type: application/json (blocks browser-simple text/plain POSTs)
+        const contentType = req.headers['content-type'] || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          res.writeHead(415, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Unsupported Media Type: Content-Type must be application/json' }));
+          return;
+        }
+
+        // Require session token authentication
+        if (!this.isValidToken(getProvidedToken())) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Unauthorized: Missing or invalid session token' }));
+          return;
+        }
+
         try {
           const body = await this.readJsonBody(req);
-          const { name, arguments: toolArgs } = body;
+          const { name, arguments: toolArgs = {} } = body;
           if (!name || typeof name !== 'string') {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, error: 'Missing or invalid "name" field' }));
             return;
           }
 
-          const data = await this.callMcpTool(name, toolArgs || {});
+          // Enforce strict tool allowlist
+          if (!ALLOWED_DASHBOARD_TOOLS.has(name)) {
+            res.writeHead(403, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: `Tool "${name}" is not permitted via dashboard HTTP API` }));
+            return;
+          }
+
+          // Workspace confinement: reject cross-workspace directory arguments
+          const callerDir = toolArgs.selected_directory || toolArgs.directory;
+          if (callerDir && typeof callerDir === 'string') {
+            const resolvedCaller = path.resolve(callerDir);
+            if (this.configuredWorkspaceDir && resolvedCaller !== this.configuredWorkspaceDir) {
+              res.writeHead(403, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, error: 'Cross-workspace directory arguments are forbidden' }));
+              return;
+            }
+          }
+
+          const safeArgs = { ...toolArgs };
+          if (this.configuredWorkspaceDir) {
+            safeArgs.selected_directory = this.configuredWorkspaceDir;
+            safeArgs.directory = this.configuredWorkspaceDir;
+          }
+
+          const data = await this.callMcpTool(name, safeArgs);
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true, data }));
         } catch (err: any) {

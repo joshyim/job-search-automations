@@ -14,11 +14,32 @@ const BASE_URL = `http://localhost:${UI_PORT}`;
 const CDP_PORT = 9345;
 const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
+let cachedToken = process.env.JOB_SEARCH_UI_TOKEN || '';
+
+async function getAuthToken() {
+  if (cachedToken) return cachedToken;
+  try {
+    const res = await fetch(`${BASE_URL}/`);
+    const html = await res.text();
+    const match = html.match(/__DASHBOARD_TOKEN__\s*=\s*"([^"]+)"/) || html.match(/__DASHBOARD_TOKEN__\s*=\s*'([^']+)'/);
+    if (match) {
+      cachedToken = match[1];
+      return cachedToken;
+    }
+  } catch {}
+  return '';
+}
+
 // Helpers for API calls to local UI server
 async function callApi(name, args = {}) {
+  const token = await getAuthToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['X-Session-Token'] = token;
+  }
   const res = await fetch(`${BASE_URL}/api/mcp/call-tool`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify({ name, arguments: args }),
   });
   const json = await res.json();

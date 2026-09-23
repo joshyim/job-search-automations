@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node scripts/start.js",
     "dev": "tsx src/server.ts",
+    "test:security": "node scripts/test-security.js",
     "test:e2e": "node scripts/test-ui-e2e.js"
   },
   "dependencies": {

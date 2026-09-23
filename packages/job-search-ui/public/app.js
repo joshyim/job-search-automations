@@ -22,12 +22,27 @@
     candidateSort: 'score_desc',
   };
 
+  // Helper: Get local session token
+  function getSessionToken() {
+    if (typeof window !== 'undefined' && window.__DASHBOARD_TOKEN__) {
+      return window.__DASHBOARD_TOKEN__;
+    }
+    const match = typeof document !== 'undefined' && document.cookie.match(/(?:^|;\s*)dashboard_token=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : '';
+  }
+
   // Helper: Call MCP Tool via local HTTP bridge
   async function callMcp(name, args = {}) {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      const token = getSessionToken();
+      if (token) {
+        headers['X-Session-Token'] = token;
+      }
+
       const response = await fetch('/api/mcp/call-tool', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ name, arguments: args }),
       });
 
