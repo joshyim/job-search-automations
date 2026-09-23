@@ -74,6 +74,7 @@ describe('MCP Tools Registration & Invocation', () => {
       'list_companies',
       'add_company',
       'update_company',
+      'update_company_crawl_status',
       'exclude_company',
       'get_batch',
       'list_title_patterns',
@@ -192,6 +193,21 @@ describe('MCP Tools Registration & Invocation', () => {
       careers_url: 'https://airbnb.com/jobs',
       is_excluded: false,
     });
+
+    // update_company_crawl_status
+    const updateCrawlStatusTool = (server as any)._registeredTools['update_company_crawl_status'];
+    await updateCrawlStatusTool.handler({
+      company_name: 'Stripe',
+      status: 'failed',
+      error_reason: 'SPA requires JS',
+    });
+    expect(adapter.updateCompany).toHaveBeenCalledWith(
+      'Stripe',
+      expect.objectContaining({
+        last_searched_at: expect.any(String),
+        notes: expect.stringContaining('SPA requires JS'),
+      })
+    );
 
     // update_title_pattern
     const updateTitlePatternTool = (server as any)._registeredTools['update_title_pattern'];

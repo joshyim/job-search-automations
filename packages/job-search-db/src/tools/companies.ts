@@ -138,4 +138,42 @@ export function registerCompanyTools(server: McpServer, workspaceManager: Worksp
       }
     }
   );
+
+  server.tool(
+    'update_company_crawl_status',
+    'Updates timestamp and crawl status/notes of last crawl pass for a company',
+    {
+      selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+      directory: z.string().optional().describe('Alias for selected_directory'),
+      company_name: z.string().describe('The name of the company'),
+      status: z.enum(['success', 'failed', 'skipped']).describe('Crawl outcome status'),
+      error_reason: z.string().optional().describe('Failure reason or error details if status is failed/skipped'),
+      notes: z.string().optional().describe('Additional notes to record'),
+    },
+    async ({ selected_directory, directory, company_name, status, error_reason, notes }) => {
+      try {
+        const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+        const companies = await adapter.listCompanies(true);
+        const existing = companies.find((c) => c.name.toLowerCase() === company_name.toLowerCase());
+        const timestamp = new Date().toISOString();
+        let updatedNotes = notes !== undefined ? notes : (existing?.notes || '');
+        if (status === 'failed' || status === 'skipped') {
+          const failurePrefix = `[Crawl ${status} ${timestamp.slice(0, 10)}: ${error_reason || 'Unknown error'}]`;
+          updatedNotes = updatedNotes ? `${failurePrefix} ${updatedNotes}` : failurePrefix;
+        }
+        const updated = await adapter.updateCompany(company_name, {
+          last_searched_at: timestamp,
+          notes: updatedNotes,
+        });
+        return {
+          content: [{ type: 'text', text: JSON.stringify(updated, null, 2) }],
+        };
+      } catch (err: any) {
+        return {
+          isError: true,
+          content: [{ type: 'text', text: err.message }],
+        };
+      }
+    }
+  );
 }

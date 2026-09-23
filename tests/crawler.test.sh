@@ -280,6 +280,25 @@ SPA_RESULT=$(cd "$ROOT_DIR" && node -e "$SPA_TEST_SCRIPT")
 assert_contains "$SPA_RESULT" '"exitCode":3' "SPA placeholder triggers exit code 3 (js_required)"
 assert_contains "$SPA_RESULT" '"isJsRequired":true' "SPA placeholder returns structured js_required error"
 
+# 8. Structured Error Output for Batch Resilience (PRO-63)
+echo -e "\n${BOLD}--- 8. Structured Error Output for Batch Resilience (PRO-63) ---${RESET}"
+
+# 8.1 Invalid arguments outputs JSON error
+INVALID_ARG_OUTPUT=$(cd "$ROOT_DIR" && node "$CRAWLER_SCRIPT" --json 2>/dev/null || true)
+assert_contains "$INVALID_ARG_OUTPUT" '"error": "invalid_arguments"' "Crawler outputs structured invalid_arguments error on missing URL"
+
+# 8.2 Invalid URL outputs JSON error
+INVALID_URL_OUTPUT=$(cd "$ROOT_DIR" && node "$CRAWLER_SCRIPT" "not-a-valid-url" --json 2>/dev/null || true)
+assert_contains "$INVALID_URL_OUTPUT" '"error": "invalid_url"' "Crawler outputs structured invalid_url error on malformed URL"
+
+# 8.3 Invalid protocol outputs JSON error
+INVALID_PROTO_OUTPUT=$(cd "$ROOT_DIR" && node "$CRAWLER_SCRIPT" "ftp://example.com" --json 2>/dev/null || true)
+assert_contains "$INVALID_PROTO_OUTPUT" '"error": "invalid_protocol"' "Crawler outputs structured invalid_protocol error on ftp URL"
+
+# 8.4 Crawl failure (SSRF / blocked IP) outputs JSON crawl_failed error
+CRAWL_FAIL_OUTPUT=$(cd "$ROOT_DIR" && node "$CRAWLER_SCRIPT" "http://127.0.0.1:1" --json 2>/dev/null || true)
+assert_contains "$CRAWL_FAIL_OUTPUT" '"error": "crawl_failed"' "Crawler outputs structured crawl_failed error on failure"
+
 echo ""
 echo "=============================================================="
 echo -e "Results: ${GREEN}${TEST_PASSED} passed${RESET}, ${RED}${TEST_FAILED} failed${RESET}"

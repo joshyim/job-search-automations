@@ -384,6 +384,59 @@ else
 fi
 
 echo ""
+echo "--- 12. Verifying Per-Company Error Isolation & Batch Resilience (PRO-63) ---"
+
+# lead-gen: per-company error isolation boundary
+if grep -qi "Per-Company Error Isolation Boundary" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Defines Per-Company Error Isolation Boundary"
+else
+  fail "job-search-lead-gen: Missing Per-Company Error Isolation Boundary"
+fi
+
+# lead-gen: wires update_company_crawl_status on failure
+if grep -qi "update_company_crawl_status" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Wires update_company_crawl_status for failure tracking"
+else
+  fail "job-search-lead-gen: Missing update_company_crawl_status in lead-gen skill"
+fi
+
+# lead-gen: batch completion summary records succeeded and failed breakdowns
+if grep -qi "M/N succeeded, K failed" "$SKILLS_DIR/job-search-lead-gen/SKILL.md" && \
+   grep -qi "\"failed\":" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Summarizes succeeded and failed breakdowns on completion"
+else
+  fail "job-search-lead-gen: Missing succeeded and failed breakdown in batch summary"
+fi
+
+# crawl: documents batch crawl mode with per-company error isolation
+if grep -qi "Batch Crawl Mode" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Documents Batch Crawl Mode"
+else
+  fail "job-search-crawl: Missing Batch Crawl Mode in crawl skill"
+fi
+
+# crawl: wires update_company_crawl_status on failure
+if grep -qi "update_company_crawl_status" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Wires update_company_crawl_status for batch error logging"
+else
+  fail "job-search-crawl: Missing update_company_crawl_status in crawl skill"
+fi
+
+# CLAUDE.md: documents per-company error isolation & batch resilience
+if grep -qi "Per-Company Error Isolation & Batch Resilience" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents Per-Company Error Isolation & Batch Resilience"
+else
+  fail "CLAUDE.md: Missing Per-Company Error Isolation & Batch Resilience in CLAUDE.md"
+fi
+
+# AGENTS.md: documents per-company error isolation & batch resilience
+if grep -qi "Per-Company Error Isolation & Batch Resilience" "$PLUGIN_ROOT/AGENTS.md"; then
+  pass "AGENTS.md: Documents Per-Company Error Isolation & Batch Resilience"
+else
+  fail "AGENTS.md: Missing Per-Company Error Isolation & Batch Resilience in AGENTS.md"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="

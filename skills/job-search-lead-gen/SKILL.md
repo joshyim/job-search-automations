@@ -51,26 +51,59 @@ Read and follow `skills/job-search-assess/SKILL.md` for this company. Pass the c
 The assess skill retrieves pending roles via `get_pending_queue`, dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<selected-directory>/.job-search/resume.pdf`, records scored roles via `add_candidate` with `status: "new"` (disposition is reserved for the user), and updates queue status via `update_queue_status`.
 
 **Phase C - Log and clean up:**
-Record the run outcome for this company using MCP tool `log_run`:
-```json
-{
-  "companies_processed": ["<company_name>"],
-  "urls_queued": <number_of_new_urls_queued>,
-  "candidates_scored": <number_of_candidates_scored>,
-  "summary": "Completed crawl and assessment for <company_name>",
-  "details": {
-    "company": "<company_name>",
-    "found": <count>,
-    "matched": <count>,
-    "added": <count>,
-    "skipped": <count>,
-    "status": "success"
+- **On Success:**
+  Record the run outcome for this company using MCP tool `log_run`:
+  ```json
+  {
+    "companies_processed": ["<company_name>"],
+    "urls_queued": <number_of_new_urls_queued>,
+    "candidates_scored": <number_of_candidates_scored>,
+    "summary": "Completed crawl and assessment for <company_name>",
+    "details": {
+      "company": "<company_name>",
+      "found": <count>,
+      "matched": <count>,
+      "added": <count>,
+      "skipped": <count>,
+      "status": "success"
+    }
   }
-}
-```
-Then remove any temporary files for this company under `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` (and ensure `<selected-directory>/.job-search/tmp/` is clean).
+  ```
+  Optionally update company crawl status:
+  `update_company_crawl_status({ company_name: "<company_name>", status: "success" })`.
+  Then remove any temporary files for this company under `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`.
 
-On failure at any point (including unresolvable SPA pages or network errors): call `log_run` with the failure details, clean up the company's temp files in `<selected-directory>/.job-search/tmp/`, then continue to the next company immediately. A single company's crawl or assessment failure must never abort the remaining companies in the batch.
+- **Per-Company Error Isolation Boundary (On Failure):**
+  If ANY error occurs during a company's crawl or assessment (e.g., crawler exit code 1/2/3/4, `js_required` SPA placeholder, network timeout, HTTP 404/500, Cloudflare block, or JSON parse error):
+  1. **Clean up ephemeral files**: Remove `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` immediately.
+  2. **Update company record**: Call `update_company_crawl_status` to stamp the failure reason into the database for manual review:
+     ```json
+     {
+       "company_name": "<company_name>",
+       "status": "failed",
+       "error_reason": "<error_type>: <error_message>"
+     }
+     ```
+  3. **Record failure telemetry via `log_run`**:
+     ```json
+     {
+       "companies_processed": ["<company_name>"],
+       "urls_queued": 0,
+       "candidates_scored": 0,
+       "summary": "Crawl failed for <company_name>: <error_message>",
+       "details": {
+         "company": "<company_name>",
+         "status": "failed",
+         "error_type": "<error_type>",
+         "error_message": "<error_message>",
+         "careers_url": "<careers_url>",
+         "needs_review": true,
+         "retryable": true
+       }
+     }
+     ```
+  4. **SKIP and CONTINUE**: Advance immediately to the next company in the batch.
+  5. **CRITICAL GUARDRAIL**: A single company's failure must NEVER abort the batch run. Never repeat `WebFetch` calls across postings when an error or SPA shell is encountered to prevent tripping harness circuit breakers (7 repeated calls).
 
 ### 3. Sort pipeline tracker
 
@@ -86,8 +119,17 @@ Call `log_run` with the batch completion summary:
   "companies_processed": ["<company1>", "<company2>", ...],
   "urls_queued": <total_queued>,
   "candidates_scored": <total_scored>,
-  "summary": "COMPLETED batch: N/N companies processed",
+  "summary": "COMPLETED batch: M/N succeeded, K failed",
   "details": {
+    "succeeded": ["<company1>", ...],
+    "failed": [
+      {
+        "company": "<company_name>",
+        "reason": "<error_message>",
+        "error_type": "<error_type>",
+        "careers_url": "<url>"
+      }
+    ],
     "per_company": [...]
   }
 }

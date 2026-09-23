@@ -1,18 +1,80 @@
 ---
 name: job-search-crawl
-description: Crawl a single company's job board, match postings against target titles, and write matched results to the crawl queue. Designed to be invoked by the job-search-lead-gen orchestrator per company.
+description: Crawl company job boards, match postings against target titles, and write matched results to the crawl queue. Supports single company crawling or batch crawling with per-company error isolation.
 compatibility: Requires Node.js (v18+). Uses lightweight ATS APIs and HTTP fetch.
 ---
 
-# Job Search - Crawl (Single Company)
+# Job Search - Crawl
 
-Crawl one company's job board, match postings against target titles via MCP, and append matched postings to the crawl queue via MCP.
+Crawl company job boards, match postings against target titles via MCP, and append matched postings to the crawl queue via MCP.
 
-This skill processes the single company passed via `$ARGUMENTS`. It expects the company name and careers URL.
+This skill supports two execution modes:
+1. **Single Company Mode**: Processes a single company passed via `$ARGUMENTS` (e.g. `Stripe https://stripe.com/jobs`).
+2. **Batch Crawl Mode**: Selects a batch of companies via MCP tool `get_batch({ limit: 3 })` and processes each company with strict per-company error isolation.
 
 ## Arguments
 
-- `$ARGUMENTS` - Required: the company name and job-board URL, e.g. `Stripe https://stripe.com/jobs`.
+- `$ARGUMENTS` - Optional: company name and job-board URL (e.g. `Stripe https://stripe.com/jobs`). If omitted, selects least-recently-searched companies via `get_batch({ limit: 3 })`.
+
+## Execution Modes
+
+### Mode A: Batch Crawl Mode (Multiple Companies)
+
+When invoked for a scheduled run or batch without specific arguments:
+1. Retrieve target companies: Call MCP tool `get_batch({ limit: 3, selected_directory: "<selected-directory>" })`.
+2. Clean up any stale temporary files under `<selected-directory>/.job-search/tmp/`.
+3. **Per-Company Error Isolation Loop**:
+   For each company in the batch:
+   - **TRY**: Execute Steps 1–4 below for this company.
+   - **CATCH** on any failure (crawler exit code 1/2/3/4, `js_required` SPA, timeout, 404/500, network error):
+     1. Clean up `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`.
+     2. Record the crawl failure via MCP tool `update_company_crawl_status`:
+        ```json
+        {
+          "company_name": "<company_name>",
+          "status": "failed",
+          "error_reason": "<error_type>: <error_message>"
+        }
+        ```
+     3. Record failure telemetry via `log_run`:
+        ```json
+        {
+          "companies_processed": ["<company_name>"],
+          "urls_queued": 0,
+          "candidates_scored": 0,
+          "summary": "Crawl failed for <company_name>: <error_message>",
+          "details": {
+            "company": "<company_name>",
+            "status": "failed",
+            "error_type": "<error_type>",
+            "error_message": "<error_message>",
+            "needs_review": true
+          }
+        }
+        ```
+     4. **SKIP and CONTINUE**: Advance immediately to the next company. Never abort the remaining batch.
+4. **Batch Completion**:
+   Call `log_run` with the batch completion summary:
+   ```json
+   {
+     "companies_processed": ["<company1>", "<company2>", ...],
+     "urls_queued": <total_queued>,
+     "candidates_scored": 0,
+     "summary": "COMPLETED crawl batch: M/N succeeded, K failed",
+     "details": {
+       "succeeded": ["<company1>", ...],
+       "failed": [
+         { "company": "<company_name>", "reason": "<error_message>", "error_type": "<error_type>" }
+       ]
+     }
+   }
+   ```
+
+### Mode B: Single Company Mode
+
+When `$ARGUMENTS` provides a single company name and URL, execute Steps 1–4 directly for that company.
+
+---
 
 ## Steps
 

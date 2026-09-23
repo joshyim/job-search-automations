@@ -112,6 +112,20 @@ In a user's project workspace after installation, the source repo and git histor
      - Title Discovery (`title-discovery`): Add at most 1–3 newly validated title patterns per scheduled run.
    - **Zero Browser Automation & ATS Fallback**: Never invoke interactive browser tools (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple `WebFetch`. For Ashby or other ATS SPAs, use the crawler in posting mode (`crawl-job-board.js --posting`) which resolves complete job text via public APIs.
    - **Circuit Breaker Prevention & Fast-Fail URLs**: If an ATS board is unreachable or a posting URL redirects/404s, immediately mark it skipped via `update_queue_status` and move to the next item. Never enter retry loops. Crucially, when an SPA placeholder ("You need to enable JavaScript to run this app.") is detected on fetch #1, immediately switch to the ATS API or skip the company—never repeat `WebFetch` calls across identical shells to avoid tripping the 7-call loop detector circuit breaker.
+   - **Per-Company Error Isolation & Batch Resilience**:
+     - In batch operations (`job-search-lead-gen` or `job-search-crawl` with `get_batch`), each company MUST be processed inside an isolated error handling boundary.
+     - A failure on one company (such as crawler exit codes 1/2/3/4, network timeout, HTTP 404/500, Cloudflare block, or unsupported SPA shell) must NEVER abort the batch run or cause the agent to drop subsequent companies.
+     - When a company fails:
+       1. Clean up its temporary files in `<selected-directory>/.job-search/tmp/`.
+       2. Record the failure reason on the company record via `update_company_crawl_status` and in run telemetry via `log_run` with structured error details (`error_type`, `error_message`, `careers_url`, `needs_review: true`).
+       3. Skip that company and proceed immediately to the next company in the batch.
+     - Failure taxonomy:
+       - `js_required`: SPA requires JS rendering and no public API or renderer is available (crawler exit 3)
+       - `unreachable`: Careers board or posting returned 404/410/500 or DNS failure (crawler exit 4)
+       - `timeout`: Network request exceeded execution deadline (crawler exit 2)
+       - `blocked`: Cloudflare, captcha, or 403 Forbidden
+       - `no_postings`: Careers board yielded 0 listings or no matching titles
+       - `assessment_error`: Error reading resume or scoring against rubric
    - **Strict Anti-Hallucination Guardrail (No Weekly Digest)**: There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest routine. Only configure the 4 canonical routines documented in [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md).
 9. **Candidate Status Ownership & Human-in-the-Loop Disposition**:
    - Automated assessment and crawler agents must **never** unilaterally set candidate status to `not_pursuing`, `closed`, `rejected`, `applied`, or any other disposition status.

@@ -135,6 +135,19 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!targetUrl) {
+  if (jsonOutput) {
+    console.log(
+      JSON.stringify(
+        {
+          error: "invalid_arguments",
+          message: "Missing target URL",
+          url: "",
+        },
+        null,
+        2
+      )
+    );
+  }
   console.error("Usage: node crawl-job-board.js <url> [--posting] [--keyword <term>] [--json] [--allow-private] [--max-time <sec>] [--max-bytes <bytes>] [--max-redirects <n>] [--max-records <n>]");
   process.exit(1);
 }
@@ -924,6 +937,19 @@ async function fetchHtmlPosting(url, options = {}) {
   });
   if (!res.ok) {
     if (res.status === 404 || res.status === 410) {
+      if (jsonOutput) {
+        console.log(
+          JSON.stringify(
+            {
+              error: "not_found",
+              message: `Posting not found (HTTP ${res.status}): ${url}`,
+              url: url,
+            },
+            null,
+            2
+          )
+        );
+      }
       console.error(`Posting not found (HTTP ${res.status}): ${url}`);
       process.exit(4);
     }
@@ -986,11 +1012,37 @@ async function fetchPosting(targetUrl, options = {}) {
   try {
     parsedTarget = new URL(targetUrl);
   } catch {
+    if (jsonOutput) {
+      console.log(
+        JSON.stringify(
+          {
+            error: "invalid_url",
+            message: `Invalid URL: ${targetUrl}`,
+            url: targetUrl,
+          },
+          null,
+          2
+        )
+      );
+    }
     console.error(`Error: Invalid URL: ${targetUrl}`);
     process.exit(1);
   }
 
   if (parsedTarget.protocol !== "http:" && parsedTarget.protocol !== "https:") {
+    if (jsonOutput) {
+      console.log(
+        JSON.stringify(
+          {
+            error: "invalid_protocol",
+            message: `Invalid protocol: ${parsedTarget.protocol}. Only http: and https: are allowed.`,
+            url: targetUrl,
+          },
+          null,
+          2
+        )
+      );
+    }
     console.error(
       `Error: Invalid protocol: ${parsedTarget.protocol}. Only http: and https: are allowed.`
     );
@@ -1115,6 +1167,19 @@ async function crawlHtml(url, options = {}) {
 (async () => {
   const overallTimeoutMs = Math.max(maxTimeSeconds * 2000, 30000); // at least 30s overall
   const overallTimer = setTimeout(() => {
+    if (jsonOutput) {
+      console.log(
+        JSON.stringify(
+          {
+            error: "timeout",
+            message: `Crawler overall execution timeout exceeded (${Math.round(overallTimeoutMs / 1000)}s)`,
+            url: targetUrl,
+          },
+          null,
+          2
+        )
+      );
+    }
     console.error(`Error: Crawler overall execution timeout exceeded (${Math.round(overallTimeoutMs / 1000)}s)`);
     process.exit(2);
   }, overallTimeoutMs);
@@ -1125,11 +1190,37 @@ async function crawlHtml(url, options = {}) {
     try {
       parsedTarget = new URL(targetUrl);
     } catch {
+      if (jsonOutput) {
+        console.log(
+          JSON.stringify(
+            {
+              error: "invalid_url",
+              message: `Invalid URL: ${targetUrl}`,
+              url: targetUrl,
+            },
+            null,
+            2
+          )
+        );
+      }
       console.error(`Error: Invalid URL: ${targetUrl}`);
       process.exit(1);
     }
 
     if (parsedTarget.protocol !== "http:" && parsedTarget.protocol !== "https:") {
+      if (jsonOutput) {
+        console.log(
+          JSON.stringify(
+            {
+              error: "invalid_protocol",
+              message: `Invalid protocol: ${parsedTarget.protocol}. Only http: and https: are allowed.`,
+              url: targetUrl,
+            },
+            null,
+            2
+          )
+        );
+      }
       console.error(
         `Error: Invalid protocol: ${parsedTarget.protocol}. Only http: and https: are allowed.`
       );
@@ -1151,6 +1242,19 @@ async function crawlHtml(url, options = {}) {
     if (isPostingMode) {
       const posting = await fetchPosting(targetUrl, crawlOpts);
       if (!posting) {
+        if (jsonOutput) {
+          console.log(
+            JSON.stringify(
+              {
+                error: "not_found",
+                message: `Posting not found at ${targetUrl}`,
+                url: targetUrl,
+              },
+              null,
+              2
+            )
+          );
+        }
         console.error(`Posting not found at ${targetUrl}`);
         clearTimeout(overallTimer);
         process.exit(4);
@@ -1238,6 +1342,19 @@ async function crawlHtml(url, options = {}) {
     process.exit(0);
   } catch (err) {
     clearTimeout(overallTimer);
+    if (jsonOutput) {
+      console.log(
+        JSON.stringify(
+          {
+            error: "crawl_failed",
+            message: err.message,
+            url: targetUrl,
+          },
+          null,
+          2
+        )
+      );
+    }
     console.error(`Error crawling ${targetUrl}: ${err.message}`);
     process.exit(2);
   }
