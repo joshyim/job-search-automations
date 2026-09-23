@@ -592,6 +592,85 @@ assert_equals "default" "$CLI_TASK2_MODE" "Unrelated task in same workspace rema
 assert_equals "default" "$CLI_TASK3_MODE" "Job-search task in other workspace remains default mode via CLI"
 
 # ------------------------------------------------------------------------------
+# Test 13: Neon Setup Shell Injection Resistance & Safe Argument Passing (PRO-56)
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 13] Neon Setup Shell Injection Resistance & Safe Argument Passing (PRO-56)${RESET}"
+
+TMP_NEON_TEST_DIR="$TMP_TEST_DIR/neon-injection-test"
+mkdir -p "$TMP_NEON_TEST_DIR"
+TMP_MARKER="$TMP_NEON_TEST_DIR/marker-injected.txt"
+TMP_MARKER2="$TMP_NEON_TEST_DIR/marker-injected-2.txt"
+TMP_STUB_DIR="$TMP_NEON_TEST_DIR/stubs"
+mkdir -p "$TMP_STUB_DIR"
+
+# 1. Verify --mode neon --mock runs cleanly without errors and initializes config
+TMP_NEON_MOCK_PROJ="$TMP_NEON_TEST_DIR/mock-project"
+mkdir -p "$TMP_NEON_MOCK_PROJ"
+NEON_MOCK_OUT="$("$ROOT_DIR/bin/cli.js" setup --mode neon --mock --directory "$TMP_NEON_MOCK_PROJ" --resume "$FIXTURE_RESUME" -y)"
+assert_contains "$NEON_MOCK_OUT" "Neon database initialized and seeded successfully (mock mode)" "Neon --mock setup initializes correctly"
+assert_file_exists "$TMP_NEON_MOCK_PROJ/.job-search/config.json" "Neon config.json created in mock mode"
+NEON_MODE_VAL="$(grep '"mode"' "$TMP_NEON_MOCK_PROJ/.job-search/config.json" | sed -E 's/.*"mode":[[:space:]]*"([^"]+)".*/\1/')"
+assert_equals "neon" "$NEON_MODE_VAL" "Config mode is neon"
+
+# 2. Fabricated connection string with shell injection payloads:
+# Contains spaces, quotes, $(touch ...), backticks, and URI query separators '&'
+CRAFTED_CONN_STR="postgresql://user:p\"ass@host:5432/db?sslmode=require&channel=prefer&inject=\$(touch \"$TMP_MARKER\")\`touch \"$TMP_MARKER2\"\`"
+
+# Create a stub 'security' tool in TMP_STUB_DIR that captures the literal arguments
+STUB_RECORD_FILE="$TMP_NEON_TEST_DIR/security-args.txt"
+STUB_PW_FILE="$TMP_NEON_TEST_DIR/security-pw.txt"
+cat << 'EOF' > "$TMP_STUB_DIR/security"
+#!/usr/bin/env bash
+echo "$@" >> "$STUB_RECORD_FILE"
+while [[ $# -gt 0 ]]; do
+  if [ "$1" = "-w" ]; then
+    printf "%s" "$2" > "$STUB_PW_FILE"
+    shift 2
+  else
+    shift
+  fi
+done
+if [ -n "$STUB_FAIL_SECURITY" ]; then
+  echo "Simulated security command error" >&2
+  exit 1
+fi
+exit 0
+EOF
+chmod +x "$TMP_STUB_DIR/security"
+
+TMP_STUB_PROJ="$TMP_NEON_TEST_DIR/stub-project"
+mkdir -p "$TMP_STUB_PROJ"
+DUMPED_CONN_STR_FILE="$TMP_NEON_TEST_DIR/dumped-conn-str.txt"
+
+# Run setup with PATH prepended with stub dir and MOCK_NEON_INIT=1
+PATH="$TMP_STUB_DIR:$PATH" STUB_RECORD_FILE="$STUB_RECORD_FILE" STUB_PW_FILE="$STUB_PW_FILE" \
+  MOCK_NEON_INIT=1 DUMP_RESOLVED_CONN_STR="$DUMPED_CONN_STR_FILE" \
+  "$ROOT_DIR/bin/cli.js" setup --mode neon --neon-connection-string "$CRAFTED_CONN_STR" \
+  --directory "$TMP_STUB_PROJ" --resume "$FIXTURE_RESUME" -y >/dev/null
+
+# Assert no shell injection occurred!
+assert_file_not_exists "$TMP_MARKER" "Shell injection marker file was NOT created via \$()"
+assert_file_not_exists "$TMP_MARKER2" "Shell injection marker file was NOT created via backticks"
+
+# Assert raw arguments reached child security command literally without boundary alteration
+RECORDED_PW="$(cat "$STUB_PW_FILE")"
+assert_equals "$CRAFTED_CONN_STR" "$RECORDED_PW" "Crafted string reached security stub with spaces, quotes, and metacharacters intact"
+
+# Assert connection string reached init-neon via environment variable channel
+DUMPED_CONN="$(cat "$DUMPED_CONN_STR_FILE")"
+assert_equals "$CRAFTED_CONN_STR" "$DUMPED_CONN" "Crafted string reached init-neon via controlled DATABASE_URL env channel"
+
+# 3. Assert Keychain storage failure fails visibly
+TMP_FAIL_PROJ="$TMP_NEON_TEST_DIR/fail-project"
+mkdir -p "$TMP_FAIL_PROJ"
+FAIL_OUTPUT="$(PATH="$TMP_STUB_DIR:$PATH" STUB_RECORD_FILE="$STUB_RECORD_FILE" STUB_PW_FILE="$STUB_PW_FILE" \
+  STUB_FAIL_SECURITY=1 MOCK_NEON_INIT=1 \
+  "$ROOT_DIR/bin/cli.js" setup --mode neon --neon-connection-string "$CRAFTED_CONN_STR" \
+  --directory "$TMP_FAIL_PROJ" --resume "$FIXTURE_RESUME" -y 2>&1 || true)"
+
+assert_contains "$FAIL_OUTPUT" "Failed to store Neon connection string in macOS Keychain" "CLI visibly fails on Keychain credential storage error"
+
+# ------------------------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------------------------
 echo -e "\n${CYAN}==============================================================${RESET}"

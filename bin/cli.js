@@ -16,7 +16,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -820,16 +820,38 @@ async function handleSetup(args) {
     fs.writeFileSync(path.join(jobSearchDir, '.gitignore'), 'job-search.sqlite*\ntmp/\n');
   } else if (mode === 'neon') {
     if (neonConnStr && !mockMode) {
-      try {
-        execSync(`security add-generic-password -s "job-search-automations" -a "neon-connection-string" -w "${neonConnStr}" -U`, {
-          stdio: 'ignore',
-        });
-      } catch {}
+      if (process.platform === 'darwin') {
+        try {
+          execFileSync(
+            'security',
+            ['add-generic-password', '-s', 'job-search-automations', '-a', 'neon-connection-string', '-w', neonConnStr, '-U'],
+            { stdio: 'ignore' }
+          );
+          console.log(`${GREEN}[+] Connection string secured in macOS Keychain.${RESET}`);
+        } catch (err) {
+          console.error(`${RED}[!] Failed to store Neon connection string in macOS Keychain:${RESET}`, err.message);
+          process.exit(1);
+        }
+      } else {
+        console.warn(`${YELLOW}[*] Non-macOS platform: Skipped macOS Keychain storage.${RESET}`);
+      }
     }
     const initScript = path.join(REPO_ROOT, 'scripts', 'init-neon.js');
     if (fs.existsSync(initScript)) {
-      const initArgs = mockMode ? ['--mock'] : (neonConnStr ? ['--connection-string', neonConnStr] : []);
-      execSync(`node "${initScript}" ${initArgs.join(' ')}`, { stdio: 'inherit' });
+      const initArgs = mockMode ? ['--mock'] : [];
+      const childEnv = { ...process.env };
+      if (neonConnStr) {
+        childEnv.DATABASE_URL = neonConnStr;
+      }
+      try {
+        execFileSync(process.execPath, [initScript, ...initArgs], {
+          stdio: 'inherit',
+          env: childEnv,
+        });
+      } catch (err) {
+        console.error(`${RED}[!] Neon database initialization failed.${RESET}`);
+        process.exit(err.status || 1);
+      }
     }
   }
 

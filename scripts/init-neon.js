@@ -133,7 +133,11 @@ function parseRubricMarkdown(rubricPath) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const isMock = args.includes('--mock');
+  const isMock = args.includes('--mock') || process.env.MOCK_NEON_INIT === '1';
+  if (process.env.DUMP_RESOLVED_CONN_STR) {
+    const resolved = resolveConnectionString(args);
+    fs.writeFileSync(process.env.DUMP_RESOLVED_CONN_STR, resolved || '');
+  }
   const schemaPath = path.resolve(projectRoot, 'schema.sql');
   const rubricPath = path.resolve(projectRoot, 'templates', 'scoring-rubric.md');
 
