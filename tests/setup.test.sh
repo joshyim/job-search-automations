@@ -91,6 +91,8 @@ HELP_OUTPUT="$("$ROOT_DIR/setup.sh" --help)"
 assert_contains "$HELP_OUTPUT" "Usage: ./setup.sh" "Displays usage instructions"
 assert_contains "$HELP_OUTPUT" "--update-resume" "Documents --update-resume flag"
 assert_contains "$HELP_OUTPUT" "--harness" "Documents --harness flag"
+assert_contains "$HELP_OUTPUT" "--standard" "Documents --standard flag"
+assert_contains "$HELP_OUTPUT" "--copilot" "Documents --copilot flag"
 assert_contains "$HELP_OUTPUT" "--codex" "Documents --codex flag"
 assert_contains "$HELP_OUTPUT" "--claude" "Documents --claude flag"
 
@@ -243,6 +245,7 @@ mkdir -p "$PROJECT_DIR"
 SETUP_DIR_OUT="$("$ROOT_DIR/setup.sh" \
   --directory "$PROJECT_DIR" \
   --resume "$FIXTURE_RESUME" \
+  --claude \
   -y)"
 
 assert_file_exists "$PROJECT_DIR/.job-search/config.json" ".job-search/config.json created in project directory"
@@ -397,6 +400,39 @@ else
   echo -e "  ${RED}✗${RESET} .mcp.json unexpectedly exists in setup.sh --codex"
   TEST_FAILED=$((TEST_FAILED + 1))
 fi
+
+# ------------------------------------------------------------------------------
+# Test 11: setup.sh --copilot Integration
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 11] setup.sh --copilot Integration${RESET}"
+COPILOT_SH_DIR="$TMP_TEST_DIR/copilot-sh-project"
+mkdir -p "$COPILOT_SH_DIR"
+
+SETUP_COPILOT_SH_OUT="$("$ROOT_DIR/setup.sh" --directory "$COPILOT_SH_DIR" --resume "$FIXTURE_RESUME" --copilot -y)"
+assert_contains "$SETUP_COPILOT_SH_OUT" "Setup Complete!" "setup.sh --copilot reported completion"
+assert_contains "$SETUP_COPILOT_SH_OUT" "VS Code Config:" "setup.sh displays VS Code config in summary"
+assert_contains "$SETUP_COPILOT_SH_OUT" "Reload Window" "setup.sh summary directs reloading VS Code window"
+
+assert_dir_exists "$COPILOT_SH_DIR/.agents/plugins/job-search-automations" "Plugin installed in .agents/plugins/job-search-automations"
+assert_file_exists "$COPILOT_SH_DIR/.vscode/mcp.json" ".vscode/mcp.json created"
+assert_file_exists "$COPILOT_SH_DIR/.mcp.json" ".mcp.json created"
+assert_dir_exists "$COPILOT_SH_DIR/.agents/skills" ".agents/skills/ directory created"
+assert_file_exists "$COPILOT_SH_DIR/AGENTS.md" "AGENTS.md created"
+
+# ------------------------------------------------------------------------------
+# Test 12: setup.sh Default Standard Mode
+# ------------------------------------------------------------------------------
+echo -e "\n${BOLD}[Test 12] setup.sh Default Standard Mode${RESET}"
+STD_SH_DIR="$TMP_TEST_DIR/standard-sh-project"
+mkdir -p "$STD_SH_DIR"
+
+SETUP_STD_SH_OUT="$("$ROOT_DIR/setup.sh" --directory "$STD_SH_DIR" --resume "$FIXTURE_RESUME" -y)"
+assert_contains "$SETUP_STD_SH_OUT" "Harness:" "setup.sh prints harness in summary"
+assert_contains "$SETUP_STD_SH_OUT" "standard" "setup.sh defaults to standard harness"
+assert_file_exists "$STD_SH_DIR/.mcp.json" ".mcp.json created in standard mode"
+assert_dir_exists "$STD_SH_DIR/.agents/skills" ".agents/skills created in standard mode"
+assert_file_exists "$STD_SH_DIR/AGENTS.md" "AGENTS.md created in standard mode"
+assert_file_exists "$STD_SH_DIR/.job-search/job-search.sqlite" "database created in standard mode"
 
 # ------------------------------------------------------------------------------
 # Summary

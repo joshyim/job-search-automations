@@ -122,16 +122,15 @@ In a user's project workspace after installation, the source repo and git histor
 
 The local Web UI dashboard provides a visual interface for reviewing scored candidates, exploring target companies, and adjusting the scoring rubric.
 
-- **Claude Desktop**: Open the dashboard via Claude Desktop's built-in web preview using the pre-configured `job-search-ui` entry in `.claude/launch.json`.
-- **Command Line**: Start the dashboard server using the plugin-relative path:
+- **When User Asks to Launch**: If the user asks to launch or start the UI/dashboard, launch the server in the background:
+  - Installed Project Workspace: `node .claude/plugins/job-search-automations/packages/job-search-ui/scripts/start.js`
+  - Source Repository: `npm run ui`
+  Confirm the running URL (default `http://localhost:3847`, or next available port if 3847 is busy) and provide it to the user.
+- **Claude Desktop**: Users can also open via Claude Desktop's built-in web preview using the pre-configured `job-search-ui` entry in `.claude/launch.json`.
+- **Command Line**: Users can manually launch directly:
   ```bash
-  npm run start --prefix ./.claude/plugins/job-search-automations/packages/job-search-ui
+  node .claude/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
   ```
-  Or run the launcher directly:
-  ```bash
-  node ./.claude/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
-  ```
-  The dashboard binds to `http://localhost:3847` (with automatic port-increment fallback if 3847 is busy).
 
 ## Available Skills
 

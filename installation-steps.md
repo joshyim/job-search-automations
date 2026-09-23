@@ -1,6 +1,6 @@
 # Job Search Automation: Installation, Configuration & LLM Onboarding Guide
 
-Comprehensive, harness-agnostic guide for installing, configuring, and running the Job Search Automation plugin. This guide serves both human users and AI agent assistants (**Claude Desktop & Code**, **Codex**, **ChatGPT**, and all **Agent Plugins v1** compliant harnesses), providing detailed technical references and step-by-step onboarding interview protocols.
+Comprehensive, harness-agnostic guide for installing, configuring, and running the Job Search Automation plugin. This guide serves both human users and AI agent assistants (**GitHub Copilot**, **Claude Desktop & Code**, **OpenAI Codex**, **ChatGPT**, **Cursor**, **Windsurf**, and all **Agent Plugins v1** and **MCP** compliant harnesses), providing detailed technical references and step-by-step onboarding interview protocols.
 
 ---
 
@@ -16,13 +16,22 @@ Comprehensive, harness-agnostic guide for installing, configuring, and running t
 
 ## Step 1: Universal Zero-Clone Installation via `npx`
 
+> [!TIP]
+> **Expert Tip**: Create a dedicated new workspace directory (e.g., `mkdir job-search && cd job-search`) before installing. This keeps your job search database, resume, and MCP configuration cleanly isolated from other coding projects.
+
 The plugin installs directly from GitHub into a temporary cache without cloning source code or git history into your workspace:
 
 ```bash
+# Universal / Standard installation (GitHub Copilot, Cursor, Windsurf, standard default):
 npx -y github:joshyim/job-search-automations setup
+
+# Or explicitly targeting your active harness:
+npx -y github:joshyim/job-search-automations setup --copilot
+npx -y github:joshyim/job-search-automations setup --claude
+npx -y github:joshyim/job-search-automations setup --codex
 ```
 
-Run this command inside your target project workspace. It initializes the `.job-search/` workspace, pre-compiles and installs the plugin into `.claude/plugins/job-search-automations/`, configures `.mcp.json` and `.claude/launch.json`, and pre-grants unattended permissions in `.claude/settings.json`.
+Run this command inside your target project workspace. It initializes the `.job-search/` workspace, pre-compiles and installs the plugin package, configures MCP stdio access, mounts skills, and sets up harness integration.
 
 ### Setup Options & Flags
 
@@ -31,14 +40,16 @@ All flags are optional when running inside your target workspace:
 | Flag | Description | Default |
 | :--- | :--- | :--- |
 | `-d, --directory <path>` | Target workspace directory | Current working directory |
-| `--harness <claude\|codex\|both>` | Target agent harness (`claude`, `codex`, or `both`) | Auto-detect (fallback: `claude`) |
-| `--codex` | Shorthand for `--harness codex` | `false` |
-| `--claude` | Shorthand for `--harness claude` | `false` |
-| `--both` | Shorthand for `--harness both` | `false` |
+| `--harness <standard\|copilot\|claude\|codex\|both>` | Target agent harness | Auto-detect (fallback: `standard`) |
+| `--standard` | Target standard Agent Plugins / MCP harness | `true` (if no harness detected) |
+| `--copilot` | Target GitHub Copilot / VS Code harness | `false` |
+| `--codex` | Target OpenAI Codex / ChatGPT desktop harness | `false` |
+| `--claude` | Target Claude Code / Claude Desktop harness | `false` |
+| `--both` | Target both Claude and Codex harnesses | `false` |
 | `--resume <path>` | Path to resume PDF (auto-detects local `resume.pdf` if omitted) | Optional (prompted or updated later) |
 | `--mode <local\|neon>` | Storage backend mode | `local` |
 | `--neon-connection-string <s>` | Neon PostgreSQL connection string (Neon mode only) | None |
-| `--install-to <path>` | Custom plugin installation directory | `<workspace>/.claude/plugins/job-search-automations` (Claude) or `<workspace>/.codex/plugins/job-search-automations` (Codex) |
+| `--install-to <path>` | Custom plugin installation directory | Auto-resolved by harness |
 | `--force` | Overwrite existing configurations during scaffolding | `false` |
 | `-y, --non-interactive` | Run non-interactively using supplied flags | Interactive if missing flags |
 | `--mock` | Mock mode for testing without database credentials | `false` |
@@ -58,44 +69,51 @@ npx -y github:joshyim/job-search-automations setup \
 
 Setup automatically establishes a clean, self-contained architecture inside your workspace tailored to the targeted harness:
 
-1. **Persistent Workspace Data (`<workspace>/.job-search/`)** *(Both Claude & Codex)*:
+1. **Persistent Workspace Data (`<workspace>/.job-search/`)** *(All Harnesses)*:
    - `job-search.sqlite`: Local SQLite database (initialized with schema, indices, and default scoring rubric).
    - `resume.pdf`: Verified copy of the candidate resume.
    - `config.json`: Runtime configuration pointing to active storage mode.
    - `tmp/`: Flat temporary directory for staging lightweight crawler outputs (auto-cleaned after runs).
 2. **Read-Only Plugin Assets**:
+   - **Standard & Copilot**: Installed in `<workspace>/.agents/plugins/job-search-automations/`.
    - **Claude**: Installed in `<workspace>/.claude/plugins/job-search-automations/`.
    - **Codex**: Installed in `<workspace>/.codex/plugins/job-search-automations/`.
    - Contains pre-compiled packages (`packages/job-search-db`, `packages/job-search-ui`), `skills/`, `scripts/crawl-job-board.js`, and manifests.
 3. **MCP Server Integration**:
+   - **Standard**: Configured in `<workspace>/.mcp.json` pointing to `packages/job-search-db/scripts/start.js`.
+   - **GitHub Copilot**: Configured in `<workspace>/.vscode/mcp.json` (and `.mcp.json`) for native VS Code Copilot Chat MCP integration.
    - **Claude**: Configured in `<workspace>/.mcp.json` (and `mcp.json`) pointing to `packages/job-search-db/scripts/start.js`.
    - **Codex**: Configured in `<workspace>/.codex/config.toml` with `[mcp_servers.job-search-db]` using plugin-relative path and `default_tools_approval_mode = "writes"`.
 4. **Skills & Agent Guidelines**:
+   - **Standard, Copilot & Codex**: Skills mirrored into `<workspace>/.agents/skills/` (with crawler script) for native discovery and guided by `<workspace>/AGENTS.md`.
    - **Claude**: Skills discovered from `.claude/plugins/job-search-automations/skills/` and guided by `CLAUDE.md`.
-   - **Codex**: Skills mirrored into `<workspace>/.agents/skills/` (with crawler script) for native discovery and guided by `<workspace>/AGENTS.md`.
 5. **Desktop & Agent Configuration (Claude Only)**:
    - `<workspace>/.claude/launch.json`: Claude Desktop web preview entry for the local UI dashboard.
-   - `<workspace>/.claude/settings.json`: Pre-configures `"defaultMode": "auto"` and pre-grants permissions for unattended runs. *(Omitted in Codex-only setups in favor of least-privilege approval).*
+   - `<workspace>/.claude/settings.json`: Pre-configures `"defaultMode": "auto"` and pre-grants permissions for unattended runs.
 
 > **LLM Execution Directive:**
-> When asked to install the plugin, detect or confirm the target harness:
-> - For **Claude**: execute `npx -y github:joshyim/job-search-automations setup --claude` in the workspace.
-> - For **Codex**: execute `npx -y github:joshyim/job-search-automations setup --codex` in the workspace.
-> Confirm scaffolded assets and inform the user of the harness-specific reload step.
+> When the user asks to install the plugin, detect your active host harness:
+> - If running in **Claude Code** or **Claude Desktop**: execute `npx -y github:joshyim/job-search-automations setup --claude` in the workspace.
+> - If running in **OpenAI Codex** or **ChatGPT**: execute `npx -y github:joshyim/job-search-automations setup --codex` in the workspace.
+> - If running in **GitHub Copilot** or **VS Code**: execute `npx -y github:joshyim/job-search-automations setup --copilot` in the workspace.
+> - For all other harnesses or standard Agent Plugin environments: run `npx -y github:joshyim/job-search-automations setup`.
+> Confirm scaffolded assets and inform the user of the quick reload step.
 
 ---
 
 ## Step 2: Harness Restart & System Verification
 
 ### Why a Restart is Required
-Agent harnesses parse configuration files (`.mcp.json` for Claude, `.codex/config.toml` for Codex) and register skills during session initialization. After running the installation command, the host session must be reloaded or restarted so that:
+Agent harnesses parse configuration files (`.vscode/mcp.json`, `.mcp.json`, or `.codex/config.toml`) and register skills during session initialization. After running the installation command, the host session must be reloaded or restarted so that:
 - The stdio connection to `packages/job-search-db/scripts/start.js` is established.
-- The 6 specification-conformant skills in `skills/` (or `.agents/skills/` in Codex) are indexed into the agent's available toolset.
+- The 6 specification-conformant skills in `skills/` (or `.agents/skills/`) are indexed into the agent's available toolset.
 
 ### Restart Instructions by Harness
+- **GitHub Copilot / VS Code**: Press `Cmd+Shift+P` (or `Ctrl+Shift+P`) → select **Developer: Reload Window**.
 - **Claude Desktop**: Restart the Claude Desktop application or reopen the project workspace folder.
 - **Claude Code CLI**: Exit your current session (`Ctrl+C` or `/exit`) and re-launch `claude` in your workspace directory.
-- **Codex**: Reload the workspace window or run `/mcp` in chat to inspect and reload active MCP servers.
+- **Codex / ChatGPT**: Reload the workspace window or run `/mcp` (or `codex mcp list`) in chat to inspect and reload active MCP servers.
+- **Standard Harnesses**: Reconnect MCP stdio server or restart agent session.
 
 ### MCP Tools Verification
 Verify that the `job-search-db` MCP server is active by calling `select_workspace` or listing available tools:
@@ -148,55 +166,38 @@ Recurring routines automate discovery, crawling, and assessment on an unattended
 > Recurring unattended routines run daily and execute high volumes of tool calls, web searches, and scraping passes. To optimize token costs and preserve quota, configure routines to use balanced, cost-effective model classes rather than defaulting to expensive flagship/frontier models (like Opus):
 > - **Claude Code / Desktop**: Recommend **Sonnet-class** (e.g., latest Sonnet).
 > - **OpenAI / Codex**: Recommend **Luna-class** (or latest lightweight/balanced model).
-> When creating or scheduling routines, select or suggest the appropriate model class instead of leaving it unspecified.
+> - **GitHub Copilot**: Recommend **Claude 3.5 Sonnet** or **GPT-4o-mini**.
 
 ### The 4 Canonical Routines
 
 | Routine # | Routine Name | Target Skill | Recommended Cadence | Recommended Model Class | Unattended Limits |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **1** | **Daily Company Search** | `company-search` | Daily 8:00 PM (`0 20 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Max 3–5 new qualified companies; budget 30–40 messages |
-| **2** | **Daily Job Title Search** | `title-discovery` | Daily 9:00 PM (`0 21 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Max 1–3 new patterns; budget 25–35 messages |
-| **3** | **Daily Job Crawl** | `job-search-crawl` / `job-search-lead-gen` | Daily 6:00 AM (`0 6 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages |
-| **4** | **Daily Job Evaluation** | `job-search-assess` | Daily 7:00 AM (`0 7 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) | Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages |
+| **1** | **Daily Company Search** | `company-search` | Daily 8:00 PM (`0 20 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) / GPT-4o-mini (Copilot) | Max 3–5 new qualified companies; budget 30–40 messages |
+| **2** | **Daily Job Title Search** | `title-discovery` | Daily 9:00 PM (`0 21 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) / GPT-4o-mini (Copilot) | Max 1–3 new patterns; budget 25–35 messages |
+| **3** | **Daily Job Crawl** | `job-search-crawl` / `job-search-lead-gen` | Daily 6:00 AM (`0 6 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) / GPT-4o-mini (Copilot) | Batch 2–3 companies (`get_batch({ limit: 3 })`); budget 40–50 messages |
+| **4** | **Daily Job Evaluation** | `job-search-assess` | Daily 7:00 AM (`0 7 * * *`) | Sonnet-class (Claude) / Luna-class (OAI) / GPT-4o-mini (Copilot) | Batch 5 pending postings (`get_pending_queue`); budget 40–50 messages |
 
-### Routine Configuration & Prompts
+### Routine Prompts
 
 #### Routine 1: Daily Company Search (`company-search`)
-Discovers new companies actively hiring for target roles across YC, BuiltIn, Wellfound, and LinkedIn, adding qualified targets via MCP.
-- **Cadence**: Daily at 8:00 PM (`0 20 * * *`)
-- **Prompt**:
-  ```text
-  /schedule CronExpression="0 20 * * *" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages. Never use browser automation."
-  ```
+```text
+/schedule CronExpression="0 20 * * *" Prompt="Run company-search to discover new hiring companies matching candidate target roles across YC, BuiltIn, Wellfound, and LinkedIn. Add at most 3-5 newly qualified companies via add_company. Complete within 35 messages. Never use browser automation."
+```
 
 #### Routine 2: Daily Job Title Search (`title-discovery`)
-Discovers emerging title patterns and function variants matching candidate skills and resume, adding validated include/exclude patterns via MCP.
-- **Cadence**: Daily at 9:00 PM (`0 21 * * *`)
-- **Prompt**:
-  ```text
-  /schedule CronExpression="0 21 * * *" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
-  ```
+```text
+/schedule CronExpression="0 21 * * *" Prompt="Run title-discovery to inspect current job listings for title variants matching candidate P1/P2 skills. Add at most 1-3 new validated include or exclude patterns via add_title_pattern. Complete within 30 messages."
+```
 
 #### Routine 3: Daily Job Crawl (`job-search-crawl` / `job-search-lead-gen`)
-Scrapes careers pages of target companies, matches openings against title patterns, and appends matched listings to the crawl queue.
-- **Cadence**: Daily at 6:00 AM (`0 6 * * *`)
-- **Prompt**:
-  ```text
-  /schedule CronExpression="0 6 * * *" Prompt="Run job-search-crawl across least-recently-searched companies using get_batch({ limit: 3 }). Match postings against title patterns and enqueue matched roles via add_to_queue. Complete within 45 messages. Fast-fail unreachable URLs."
-  ```
+```text
+/schedule CronExpression="0 6 * * *" Prompt="Run job-search-crawl across least-recently-searched companies using get_batch({ limit: 3 }). Match postings against title patterns and enqueue matched roles via add_to_queue. Complete within 45 messages. Fast-fail unreachable URLs."
+```
 
 #### Routine 4: Daily Job Evaluation (`job-search-assess`)
-Pulls pending listings from the crawl queue, validates active status, scores against resume and dynamic rubric, and records candidates.
-- **Cadence**: Daily at 7:00 AM (`0 7 * * *`)
-- **Prompt**:
-  ```text
-  /schedule CronExpression="0 7 * * *" Prompt="Run job-search-assess for up to 5 pending postings from get_pending_queue. Score against candidate resume and scoring rubric, and record each scored candidate via add_candidate with status 'new'. Complete within 45 messages."
-  ```
-
-### Managing & Verifying Routines
-- **Auto Approval Verification**: In Claude Desktop under **Scheduled** or at [claude.ai/code/routines](https://claude.ai/code/routines), verify that every routine displays `· Auto`. If any routine displays `· Manual`, open its settings and switch it to **Auto**.
-- **Model Class Verification**: Check that each routine uses **Sonnet** (Claude) or **Luna** (OpenAI).
-- **Remediation**: If an existing setup contains a "Weekly digest" routine, delete it immediately.
+```text
+/schedule CronExpression="0 7 * * *" Prompt="Run job-search-assess for up to 5 pending postings from get_pending_queue. Score against candidate resume and scoring rubric, and record each scored candidate via add_candidate with status 'new'. Complete within 45 messages."
+```
 
 ---
 
@@ -275,16 +276,57 @@ This section outlines the exact conversational workflow and operational protocol
 3. **Update Rubric Dimensions**:
    - Call `upsert_rubric_dimension` to save any customized dimension weights or scoring criteria.
 
-### 6. Launch Web Dashboard for Visual Review
-Inform the user that they can visually inspect and modify their target companies, title rules, and rubric sliders via the local dashboard:
-```bash
-node .claude/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
-```
-The dashboard binds to `http://localhost:3847` (with automatic port-increment fallback if 3847 is busy). In Claude Desktop, users can also open the `job-search-ui` entry via the web preview launcher.
+---
+
+## Step 5: Execute Initial Manual Run & Verify Settings
+
+Before letting unattended recurring routines take over, the AI assistant should conduct an initial test crawl and evaluation pass:
+
+1. **Permission Check**:
+   - **Claude Code**: Ensure permission mode is set to **auto** (`permissionMode: "auto"` or run `/permissions`) so the crawler script and MCP database tools execute smoothly without waiting for confirmation on every single step.
+   - **GitHub Copilot / Codex**: Confirm tool approvals are granted for database queries and crawling.
+2. **Run Pipeline Pass**:
+   - Trigger a bounded test crawl for 1 target company using `job-search-lead-gen`:
+     > *"Running an initial test crawl for [Company Name] to verify that postings are discovered, enqueued, and evaluated against your rubric."*
+3. **Verify Settings Output**:
+   - Confirm candidate matches are recorded in SQLite (`job-search.sqlite`) with status `'new'`.
+   - Confirm run logs are written via `log_run`.
 
 ---
 
-## Step 5: Ongoing Maintenance
+## Step 6: Check the Initial Run & Launch Local Web Dashboard
+
+The plugin includes a local single-page dashboard for inspecting pipeline statistics, managing target companies, reviewing candidates, and customizing the scoring rubric.
+
+### Launching the Dashboard
+
+The easiest and recommended way to launch the dashboard is simply to **ask your AI assistant** in chat:
+
+> *"Launch the job search dashboard"* or *"Start the local UI"*
+
+Your agent will run the launcher in the background and provide the direct URL (defaults to `http://localhost:3847`).
+
+### Visual Review Checklist
+1. **Review Candidates**: Open the **Candidates** view to review overall match percentages and per-dimension scores from the Step 5 test run.
+2. **Inspect Pipeline Telemetry**: Inspect crawl statuses, enqueued postings, and execution logs under **Activity**.
+3. **Adjust Rubric Weights**: If candidate scores need tuning, adjust dimension weights or criteria directly on the **Configuration** tab.
+
+### Alternative Manual Launch
+```bash
+# Standard & Copilot:
+node .agents/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
+
+# Claude:
+node .claude/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
+
+# Codex:
+node .codex/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
+```
+The dashboard automatically detects port conflicts on `3847` and increments to the next available free port (e.g., `3848`).
+
+---
+
+## Step 7: Ongoing Maintenance & Uninstallation
 
 ### Updating Your Resume
 When you update your resume, you do not need to re-run full setup. Use the fast-path `update-resume` command:
@@ -304,8 +346,7 @@ To remove the installed plugin code while preserving your historical search data
 npx -y github:joshyim/job-search-automations uninstall --directory "<path-to-workspace>"
 ```
 
-- Removes `<workspace>/.claude/plugins/job-search-automations/` and/or `<workspace>/.codex/plugins/job-search-automations/`.
-- Cleans up `job-search-db` from `<workspace>/.mcp.json` and/or `<workspace>/.codex/config.toml`.
+- Removes `<workspace>/.agents/plugins/job-search-automations/`, `<workspace>/.claude/plugins/job-search-automations/`, and/or `<workspace>/.codex/plugins/job-search-automations/`.
+- Cleans up `job-search-db` from `<workspace>/.mcp.json`, `<workspace>/.vscode/mcp.json`, and/or `<workspace>/.codex/config.toml`.
 - Removes `job-search-ui` from `<workspace>/.claude/launch.json` (Claude).
-- Removes `.agents/skills/` and `AGENTS.md` (Codex).
 - Preserves `<workspace>/.job-search/` (pass `--purge-data` if you wish to delete user data as well).

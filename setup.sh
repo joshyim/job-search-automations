@@ -60,8 +60,9 @@ print_help() {
   echo ""
   echo -e "${BOLD}Setup Options:${RESET}"
   echo "  --directory <path>, -d       Project workspace directory to initialize (creates <dir>/.job-search/)"
-  echo "  --resume <path>              Path to initial resume file to import"
-  echo "  --harness <claude|codex|both> Target AI harness (default: auto-detected, fallback: claude)"
+  echo "  --harness <standard|copilot|claude|codex|both> Target AI harness (default: auto-detected, fallback: standard)"
+  echo "  --standard                   Target standard Agent Plugins / MCP harness (default)"
+  echo "  --copilot                    Target GitHub Copilot / VS Code harness"
   echo "  --codex                      Target OpenAI Codex / ChatGPT desktop harness"
   echo "  --claude                     Target Claude Code / Claude Desktop harness"
   echo "  --mode <local|neon>          Storage mode ('local' or 'neon', default: local)"
@@ -260,6 +261,14 @@ while [[ $# -gt 0 ]]; do
       HARNESS="$2"
       shift 2
       ;;
+    --copilot)
+      HARNESS="copilot"
+      shift
+      ;;
+    --standard|--universal)
+      HARNESS="standard"
+      shift
+      ;;
     --codex)
       HARNESS="codex"
       shift
@@ -434,6 +443,10 @@ if [ -z "$HARNESS" ]; then
   if [ -n "$CLAUDE_CODE" ] || [ -n "$CLAUDE_PROJECT_DIR" ]; then
     is_claude_env=true
   fi
+  is_copilot_env=false
+  if [ -n "$GITHUB_COPILOT" ] || [ -n "$COPILOT_AGENT" ] || [ -n "$VSCODE_PID" ] || [ -n "$VSCODE_INJECTION" ]; then
+    is_copilot_env=true
+  fi
   has_codex_dir=false
   if [ -d "$PROJECT_DIR/.codex" ] || [ -f "$PROJECT_DIR/.codex/config.toml" ]; then
     has_codex_dir=true
@@ -442,32 +455,49 @@ if [ -z "$HARNESS" ]; then
   if [ -d "$PROJECT_DIR/.claude" ] || [ -f "$PROJECT_DIR/CLAUDE.md" ]; then
     has_claude_dir=true
   fi
+  has_vscode_dir=false
+  if [ -d "$PROJECT_DIR/.vscode" ] || [ -d "$PROJECT_DIR/.github" ]; then
+    has_vscode_dir=true
+  fi
 
   codex_score=0
   claude_score=0
+  copilot_score=0
   if [ "$is_codex_env" = true ]; then codex_score=$((codex_score + 2)); fi
   if [ "$has_codex_dir" = true ]; then codex_score=$((codex_score + 1)); fi
   if [ "$is_claude_env" = true ]; then claude_score=$((claude_score + 2)); fi
   if [ "$has_claude_dir" = true ]; then claude_score=$((claude_score + 1)); fi
+  if [ "$is_copilot_env" = true ]; then copilot_score=$((copilot_score + 2)); fi
+  if [ "$has_vscode_dir" = true ]; then copilot_score=$((copilot_score + 1)); fi
 
   if [ $codex_score -gt 0 ] && [ $claude_score -gt 0 ]; then
     HARNESS="both"
+  elif [ $copilot_score -gt 0 ] && [ $claude_score -eq 0 ] && [ $codex_score -eq 0 ]; then
+    HARNESS="copilot"
   elif [ $codex_score -gt 0 ]; then
     HARNESS="codex"
   elif [ $claude_score -gt 0 ]; then
     HARNESS="claude"
   else
-    HARNESS="claude"
+    HARNESS="standard"
   fi
 fi
 
 IS_CLAUDE_TARGET=false
 IS_CODEX_TARGET=false
+IS_COPILOT_TARGET=false
+IS_STANDARD_TARGET=false
 if [ "$HARNESS" = "claude" ] || [ "$HARNESS" = "both" ]; then
   IS_CLAUDE_TARGET=true
 fi
 if [ "$HARNESS" = "codex" ] || [ "$HARNESS" = "both" ]; then
   IS_CODEX_TARGET=true
+fi
+if [ "$HARNESS" = "copilot" ]; then
+  IS_COPILOT_TARGET=true
+fi
+if [ "$HARNESS" = "standard" ] || [ "$HARNESS" = "universal" ] || [ "$IS_COPILOT_TARGET" = true ]; then
+  IS_STANDARD_TARGET=true
 fi
 
 TARGET_RESUME="$JOB_SEARCH_DIR/resume.pdf"
@@ -732,8 +762,10 @@ TARGET_PLUGIN_DIR=""
 if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
   if [ "$IS_CODEX_TARGET" = true ]; then
     TARGET_PLUGIN_DIR="${INSTALL_TO:-$PROJECT_DIR/.codex/plugins/job-search-automations}"
-  else
+  elif [ "$IS_CLAUDE_TARGET" = true ]; then
     TARGET_PLUGIN_DIR="${INSTALL_TO:-$PROJECT_DIR/.claude/plugins/job-search-automations}"
+  else
+    TARGET_PLUGIN_DIR="${INSTALL_TO:-$PROJECT_DIR/.agents/plugins/job-search-automations}"
   fi
   TARGET_PLUGIN_DIR="$(expand_path "$TARGET_PLUGIN_DIR")"
   echo -e "${CYAN}[*] Installing self-contained plugin package to: $TARGET_PLUGIN_DIR...${RESET}"
@@ -1099,6 +1131,100 @@ if [ -n "$INSTALL_TO" ] || [ -n "$DIRECTORY" ]; then
       fi
     fi
   fi
+
+  if [ "$IS_STANDARD_TARGET" = true ] && [ "$IS_CLAUDE_TARGET" = false ] && [ "$IS_CODEX_TARGET" = false ]; then
+    # Configure root .mcp.json
+    MCP_FILE="$PROJECT_DIR/.mcp.json"
+    node -e "
+      const fs = require('fs');
+      const path = require('path');
+      const projectDir = '$PROJECT_DIR';
+      const pluginDir = '$TARGET_PLUGIN_DIR';
+      const mcpFile = '$MCP_FILE';
+      const startJs = path.join(pluginDir, 'packages', 'job-search-db', 'scripts', 'start.js');
+      let rel = path.relative(projectDir, startJs);
+      if (!rel.startsWith('./') && !rel.startsWith('../') && !rel.startsWith('/')) rel = './' + rel;
+
+      let cfg = { mcpServers: {} };
+      if (fs.existsSync(mcpFile)) {
+        try { cfg = JSON.parse(fs.readFileSync(mcpFile, 'utf-8')); } catch {}
+        if (!cfg.mcpServers) cfg.mcpServers = {};
+      }
+      cfg.mcpServers['job-search-db'] = {
+        type: 'stdio',
+        command: 'node',
+        args: [rel]
+      };
+      fs.writeFileSync(mcpFile, JSON.stringify(cfg, null, 2) + '\n');
+    "
+    echo -e "${GREEN}[+] Standard MCP configuration updated:${RESET} $MCP_FILE"
+
+    if [ "$IS_COPILOT_TARGET" = true ] || [ -d "$PROJECT_DIR/.vscode" ]; then
+      VSCODE_DIR="$PROJECT_DIR/.vscode"
+      mkdir -p "$VSCODE_DIR"
+      VSCODE_MCP_FILE="$VSCODE_DIR/mcp.json"
+      node -e "
+        const fs = require('fs');
+        const path = require('path');
+        const projectDir = '$PROJECT_DIR';
+        const pluginDir = '$TARGET_PLUGIN_DIR';
+        const mcpFile = '$VSCODE_MCP_FILE';
+        const startJs = path.join(pluginDir, 'packages', 'job-search-db', 'scripts', 'start.js');
+        let rel = path.relative(projectDir, startJs);
+        if (!rel.startsWith('./') && !rel.startsWith('../') && !rel.startsWith('/')) rel = './' + rel;
+
+        let cfg = { mcpServers: {} };
+        if (fs.existsSync(mcpFile)) {
+          try { cfg = JSON.parse(fs.readFileSync(mcpFile, 'utf-8')); } catch {}
+          if (!cfg.mcpServers) cfg.mcpServers = {};
+        }
+        cfg.mcpServers['job-search-db'] = {
+          type: 'stdio',
+          command: 'node',
+          args: [rel]
+        };
+        fs.writeFileSync(mcpFile, JSON.stringify(cfg, null, 2) + '\n');
+      "
+      echo -e "${GREEN}[+] VS Code / Copilot MCP configuration updated:${RESET} $VSCODE_MCP_FILE"
+    fi
+
+    # Install skills into .agents/skills
+    AGENTS_SKILLS_DIR="$PROJECT_DIR/.agents/skills"
+    mkdir -p "$AGENTS_SKILLS_DIR"
+    node -e "
+      const fs = require('fs');
+      const path = require('path');
+      const skillsSrc = path.join('$SCRIPT_DIR', 'skills');
+      const dest = '$AGENTS_SKILLS_DIR';
+      function copyRec(src, d) {
+        if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+        for (const e of fs.readdirSync(src)) {
+          const s = path.join(src, e);
+          const t = path.join(d, e);
+          if (fs.statSync(s).isDirectory()) copyRec(s, t);
+          else fs.copyFileSync(s, t);
+        }
+      }
+      copyRec(skillsSrc, dest);
+    "
+    mkdir -p "$AGENTS_SKILLS_DIR/job-search-crawl/scripts"
+    if [ -f "$SCRIPT_DIR/scripts/crawl-job-board.js" ]; then
+      cp "$SCRIPT_DIR/scripts/crawl-job-board.js" "$AGENTS_SKILLS_DIR/job-search-crawl/scripts/crawl-job-board.js"
+      chmod 755 "$AGENTS_SKILLS_DIR/job-search-crawl/scripts/crawl-job-board.js"
+    fi
+    echo -e "${GREEN}[+] Declarative agent skills installed:${RESET} $AGENTS_SKILLS_DIR"
+
+    if [ -f "$SCRIPT_DIR/AGENTS.md" ]; then
+      cp "$SCRIPT_DIR/AGENTS.md" "$PROJECT_DIR/AGENTS.md"
+      echo -e "${GREEN}[+] Agent guidelines created:${RESET} $PROJECT_DIR/AGENTS.md"
+    fi
+
+    if [ -f "$PROJECT_DIR/.gitignore" ]; then
+      if ! grep -q "\.agents/plugins/" "$PROJECT_DIR/.gitignore"; then
+        echo -e "\n# Installed Agent Plugins\n.agents/plugins/" >> "$PROJECT_DIR/.gitignore"
+      fi
+    fi
+  fi
 fi
 
 echo ""
@@ -1133,6 +1259,14 @@ if [ "$IS_CLAUDE_TARGET" = true ]; then
     echo -e "                     ${GREEN}✓${RESET} Web Access:        ${CYAN}WebSearch${RESET}, ${CYAN}WebFetch${RESET} (fallback discovery)"
   fi
 fi
+if [ "$IS_COPILOT_TARGET" = true ] && [ -n "$VSCODE_MCP_FILE" ]; then
+  echo -e "  VS Code Config:    ${BOLD}$VSCODE_MCP_FILE${RESET}"
+  echo -e "                     ${GREEN}✓${RESET} MCP Server:      ${CYAN}job-search-db${RESET}"
+  echo -e "  Agent Skills:      ${BOLD}$AGENTS_SKILLS_DIR${RESET}"
+elif [ "$IS_STANDARD_TARGET" = true ] && [ "$IS_CLAUDE_TARGET" = false ] && [ "$IS_CODEX_TARGET" = false ]; then
+  echo -e "  Standard MCP:      ${BOLD}$MCP_FILE${RESET}"
+  echo -e "  Agent Skills:      ${BOLD}$AGENTS_SKILLS_DIR${RESET}"
+fi
 echo ""
 echo -e "To update your resume in the future, run:"
 echo -e "  ${BOLD}./setup.sh --update-resume <path-to-new-resume.pdf> --directory \"$PROJECT_DIR\"${RESET}"
@@ -1148,16 +1282,22 @@ fi
 if [ "$IS_CODEX_TARGET" = true ]; then
   echo "    • OpenAI / Codex:        Recommend Luna-class (fast, low token cost)"
 fi
-if [ "$IS_CLAUDE_TARGET" = false ] && [ "$IS_CODEX_TARGET" = false ]; then
+if [ "$IS_COPILOT_TARGET" = true ]; then
+  echo "    • GitHub Copilot:        Recommend Claude 3.5 Sonnet or GPT-4o-mini"
+fi
+if [ "$IS_CLAUDE_TARGET" = false ] && [ "$IS_CODEX_TARGET" = false ] && [ "$IS_COPILOT_TARGET" = false ]; then
   echo "    • OpenAI / Codex:        Recommend Luna-class (fast, low token cost)"
   echo "    • Claude Code / Desktop: Recommend Sonnet-class (cost-effective, balanced)"
+  echo "    • Standard Harnesses:    Recommend balanced tier models"
 fi
 echo "    (Avoid defaulting unattended recurring routines to expensive flagship models like Opus)"
 echo ""
-if [ "$IS_CODEX_TARGET" = true ] && [ "$IS_CLAUDE_TARGET" = false ]; then
+if [ "$IS_COPILOT_TARGET" = true ]; then
+  echo -e "Please reload your VS Code window (Cmd+Shift+P -> 'Developer: Reload Window') for Copilot to load skills and MCP tools."
+elif [ "$IS_CODEX_TARGET" = true ] && [ "$IS_CLAUDE_TARGET" = false ]; then
   echo -e "Please reload your Codex workspace window or inspect /mcp for skills and MCP tools to load."
 elif [ "$IS_CLAUDE_TARGET" = true ] && [ "$IS_CODEX_TARGET" = false ]; then
   echo -e "Please restart your Claude session for skills and MCP tools to load."
 else
-  echo -e "Please reload your Codex window or restart your Claude session for skills and MCP tools to load."
+  echo -e "Please reload your workspace window or restart your agent session for skills and MCP tools to load."
 fi

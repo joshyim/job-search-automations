@@ -105,14 +105,14 @@ The Job Search Automation workspace operates on a clean separation of three comp
 
 The local Web UI dashboard provides a visual interface for reviewing scored candidates, exploring target companies, and adjusting the scoring rubric.
 
-- Start the dashboard server using the installed plugin path:
+- **When User Asks to Launch**: If the user asks to launch or start the UI/dashboard, launch the server in the background:
+  - Installed Project Workspace: `node .codex/plugins/job-search-automations/packages/job-search-ui/scripts/start.js`
+  - Source Repository: `npm run ui`
+  Confirm the running URL (default `http://localhost:3847`, or next available port if busy) and provide it to the user.
+- **Command Line**: Users can manually launch directly:
   ```bash
-  # Codex / installed layout:
   node .codex/plugins/job-search-automations/packages/job-search-ui/scripts/start.js
-  # Or via npm prefix:
-  npm run start --prefix ./.codex/plugins/job-search-automations/packages/job-search-ui
   ```
-  The dashboard binds to `http://localhost:3847` (with automatic port fallback if 3847 is busy).
 
 ---
 

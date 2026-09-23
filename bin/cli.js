@@ -77,8 +77,9 @@ function printHelp() {
   console.log(`  uninstall          Remove installed plugin while preserving user data`);
   console.log(`\n${BOLD}Setup Options:${RESET}`);
   console.log(`  -d, --directory <path>       Target project directory (default: current directory)`);
-  console.log(`  --resume <path>              Path to resume file (.pdf)`);
-  console.log(`  --harness <claude|codex|both> Target AI harness (default: auto-detected, fallback: claude)`);
+  console.log(`  --harness <standard|copilot|claude|codex|both> Target AI harness (default: auto-detected, fallback: standard)`);
+  console.log(`  --standard                   Target standard Agent Plugins / MCP harness (default)`);
+  console.log(`  --copilot                    Target GitHub Copilot / VS Code harness`);
   console.log(`  --codex                      Target OpenAI Codex / ChatGPT desktop harness`);
   console.log(`  --claude                     Target Claude Code / Claude Desktop harness`);
   console.log(`  --mode <local|neon>          Storage mode ('local' or 'neon', default: local)`);
@@ -200,19 +201,29 @@ function detectHarness(projectDir) {
     process.env.CLAUDE_CODE ||
     process.env.CLAUDE_PROJECT_DIR
   );
+  const isCopilotEnv = Boolean(
+    process.env.GITHUB_COPILOT ||
+    process.env.COPILOT_AGENT ||
+    process.env.VSCODE_PID ||
+    process.env.VSCODE_INJECTION
+  );
 
   const hasCodexDir = fs.existsSync(path.join(projectDir, '.codex')) ||
                       fs.existsSync(path.join(projectDir, '.codex', 'config.toml'));
   const hasClaudeDir = fs.existsSync(path.join(projectDir, '.claude')) ||
                        fs.existsSync(path.join(projectDir, 'CLAUDE.md'));
+  const hasVscodeDir = fs.existsSync(path.join(projectDir, '.vscode')) ||
+                       fs.existsSync(path.join(projectDir, '.github'));
 
   const codexScore = (isCodexEnv ? 2 : 0) + (hasCodexDir ? 1 : 0);
   const claudeScore = (isClaudeEnv ? 2 : 0) + (hasClaudeDir ? 1 : 0);
+  const copilotScore = (isCopilotEnv ? 2 : 0) + (hasVscodeDir ? 1 : 0);
 
   if (codexScore > 0 && claudeScore > 0) return 'both';
+  if (copilotScore > 0 && claudeScore === 0 && codexScore === 0) return 'copilot';
   if (codexScore > 0) return 'codex';
   if (claudeScore > 0) return 'claude';
-  return 'claude'; // default fallback for backwards compatibility
+  return 'standard'; // Universal standard default conforming to Agent Plugins v1 spec
 }
 
 function updateCodexConfig(configTomlPath, projectDir, relativeStartJs) {
@@ -274,6 +285,10 @@ async function handleSetup(args) {
       harness = (args[++i] || '').toLowerCase();
     } else if (arg.startsWith('--harness=')) {
       harness = arg.slice('--harness='.length).toLowerCase();
+    } else if (arg === '--copilot') {
+      harness = 'copilot';
+    } else if (arg === '--standard' || arg === '--universal') {
+      harness = 'standard';
     } else if (arg === '--codex') {
       harness = 'codex';
     } else if (arg === '--claude') {
@@ -299,9 +314,14 @@ async function handleSetup(args) {
 
   const projectDir = expandPath(directory || process.cwd());
   harness = harness || detectHarness(projectDir);
-  const defaultPluginSubdir = harness === 'codex'
-    ? path.join('.codex', 'plugins', 'job-search-automations')
-    : path.join('.claude', 'plugins', 'job-search-automations');
+  let defaultPluginSubdir;
+  if (harness === 'codex') {
+    defaultPluginSubdir = path.join('.codex', 'plugins', 'job-search-automations');
+  } else if (harness === 'claude') {
+    defaultPluginSubdir = path.join('.claude', 'plugins', 'job-search-automations');
+  } else {
+    defaultPluginSubdir = path.join('.agents', 'plugins', 'job-search-automations');
+  }
   const pluginDir = installTo ? expandPath(installTo) : path.join(projectDir, defaultPluginSubdir);
   const jobSearchDir = path.join(projectDir, '.job-search');
   const configFile = path.join(jobSearchDir, 'config.json');
@@ -585,6 +605,73 @@ async function handleSetup(args) {
     }
   }
 
+  const isCopilotTarget = (harness === 'copilot');
+  const isStandardTarget = (harness === 'standard' || harness === 'universal');
+  let vscodeConfigPath = '';
+
+  if (isStandardTarget || isCopilotTarget) {
+    // 3.8 Configure root .mcp.json
+    const mcpJsonPath = path.join(projectDir, '.mcp.json');
+    let mcpConfig = { mcpServers: {} };
+    if (fs.existsSync(mcpJsonPath)) {
+      try {
+        mcpConfig = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf-8'));
+        if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
+      } catch {}
+    }
+    mcpConfig.mcpServers['job-search-db'] = {
+      type: 'stdio',
+      command: 'node',
+      args: [relativeStartJs],
+    };
+    fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
+    console.log(`${GREEN}[+] Standard MCP configuration updated:${RESET} ${mcpJsonPath}`);
+
+    // If Copilot target or .vscode exists, configure .vscode/mcp.json
+    if (isCopilotTarget || fs.existsSync(path.join(projectDir, '.vscode'))) {
+      const vscodeDir = path.join(projectDir, '.vscode');
+      fs.mkdirSync(vscodeDir, { recursive: true });
+      vscodeConfigPath = path.join(vscodeDir, 'mcp.json');
+      let vscodeMcp = { mcpServers: {} };
+      if (fs.existsSync(vscodeConfigPath)) {
+        try {
+          vscodeMcp = JSON.parse(fs.readFileSync(vscodeConfigPath, 'utf-8'));
+          if (!vscodeMcp.mcpServers) vscodeMcp.mcpServers = {};
+        } catch {}
+      }
+      vscodeMcp.mcpServers['job-search-db'] = {
+        type: 'stdio',
+        command: 'node',
+        args: [relativeStartJs],
+      };
+      fs.writeFileSync(vscodeConfigPath, JSON.stringify(vscodeMcp, null, 2) + '\n');
+      console.log(`${GREEN}[+] VS Code / Copilot MCP configuration updated:${RESET} ${vscodeConfigPath}`);
+    }
+
+    // Register skills in .agents/skills
+    agentsSkillsDir = path.join(projectDir, '.agents', 'skills');
+    fs.mkdirSync(agentsSkillsDir, { recursive: true });
+    if (fs.existsSync(skillsSrc)) {
+      copyRecursiveSync(skillsSrc, agentsSkillsDir, runtimeFilter);
+    }
+    const crawlScriptDestDir = path.join(agentsSkillsDir, 'job-search-crawl', 'scripts');
+    fs.mkdirSync(crawlScriptDestDir, { recursive: true });
+    const crawlScriptSrc = path.join(REPO_ROOT, 'scripts', 'crawl-job-board.js');
+    if (fs.existsSync(crawlScriptSrc)) {
+      fs.copyFileSync(crawlScriptSrc, path.join(crawlScriptDestDir, 'crawl-job-board.js'));
+      fs.chmodSync(path.join(crawlScriptDestDir, 'crawl-job-board.js'), 0o755);
+    }
+    console.log(`${GREEN}[+] Declarative agent skills installed:${RESET} ${agentsSkillsDir}`);
+
+    // Copy AGENTS.md
+    const agentsMdSrc = path.join(REPO_ROOT, 'AGENTS.md');
+    if (fs.existsSync(agentsMdSrc)) {
+      const targetAgentsMd = path.join(projectDir, 'AGENTS.md');
+      fs.copyFileSync(agentsMdSrc, targetAgentsMd);
+      console.log(`${GREEN}[+] Agent guidelines created:${RESET} ${targetAgentsMd}`);
+    }
+  }
+
   // 4. Initialize <project>/.job-search/
   fs.mkdirSync(jobSearchDir, { recursive: true });
   fs.mkdirSync(path.join(jobSearchDir, 'tmp'), { recursive: true });
@@ -757,6 +844,7 @@ async function handleSetup(args) {
   const ignorePatterns = [];
   if (isClaudeTarget) ignorePatterns.push('.claude/plugins/');
   if (isCodexTarget) ignorePatterns.push('.codex/plugins/');
+  if (isStandardTarget || isCopilotTarget) ignorePatterns.push('.agents/plugins/');
 
   if (fs.existsSync(projectGitignore)) {
     const giContent = fs.readFileSync(projectGitignore, 'utf-8');
@@ -795,6 +883,16 @@ async function handleSetup(args) {
       console.log(`                     ${GREEN}✓${RESET} Web Access:        ${CYAN}WebSearch${RESET}, ${CYAN}WebFetch${RESET} (fallback discovery)`);
     }
   }
+  if (isCopilotTarget) {
+    if (vscodeConfigPath) {
+      console.log(`  VS Code Config:    ${BOLD}${vscodeConfigPath}${RESET}`);
+      console.log(`                     ${GREEN}✓${RESET} MCP Server:      ${CYAN}job-search-db${RESET}`);
+    }
+    console.log(`  Agent Skills:      ${BOLD}${agentsSkillsDir}${RESET}`);
+  } else if (isStandardTarget && !isClaudeTarget && !isCodexTarget) {
+    console.log(`  Standard MCP:      ${BOLD}${path.join(projectDir, '.mcp.json')}${RESET}`);
+    console.log(`  Agent Skills:      ${BOLD}${agentsSkillsDir}${RESET}`);
+  }
   console.log(`\n${CYAN}${BOLD}Recurring Pipeline Runs:${RESET}`);
   console.log(`  Use the /schedule command or harness routine settings to automate runs:`);
   console.log(`  /schedule CronExpression="0 9 * * 1-5" Prompt="Run job-search-lead-gen for a batch of 3 companies in directory '${projectDir}'. Complete within 50 messages."`);
@@ -805,18 +903,24 @@ async function handleSetup(args) {
   if (isCodexTarget) {
     console.log(`    • OpenAI / Codex:        Recommend Luna-class (fast, low token cost)`);
   }
-  if (!isClaudeTarget && !isCodexTarget) {
+  if (isCopilotTarget) {
+    console.log(`    • GitHub Copilot:        Recommend Claude 3.5 Sonnet or GPT-4o-mini`);
+  }
+  if (!isClaudeTarget && !isCodexTarget && !isCopilotTarget) {
     console.log(`    • OpenAI / Codex:        Recommend Luna-class (fast, low token cost)`);
     console.log(`    • Claude Code / Desktop: Recommend Sonnet-class (cost-effective, balanced)`);
+    console.log(`    • Standard Harnesses:    Recommend balanced tier models`);
   }
   console.log(`    (Avoid defaulting unattended recurring routines to expensive flagship models like Opus)`);
 
-  if (isCodexTarget && !isClaudeTarget) {
+  if (isCopilotTarget) {
+    console.log(`\nPlease reload your VS Code window (Cmd+Shift+P -> 'Developer: Reload Window') for Copilot to load skills and MCP tools.`);
+  } else if (isCodexTarget && !isClaudeTarget) {
     console.log(`\nPlease reload your Codex workspace window or inspect /mcp for skills and MCP tools to load.`);
   } else if (isClaudeTarget && !isCodexTarget) {
     console.log(`\nPlease restart your Claude session for skills and MCP tools to load.`);
   } else {
-    console.log(`\nPlease reload your Codex window or restart your Claude session for skills and MCP tools to load.`);
+    console.log(`\nPlease reload your workspace window or restart your agent session for skills and MCP tools to load.`);
   }
 }
 
@@ -934,8 +1038,10 @@ async function handleUninstall(args) {
     : [
         path.join(projectDir, '.claude', 'plugins', 'job-search-automations'),
         path.join(projectDir, '.codex', 'plugins', 'job-search-automations'),
+        path.join(projectDir, '.agents', 'plugins', 'job-search-automations'),
         path.join(projectDir, '.claude', 'plugins', 'job-search-automation'),
         path.join(projectDir, '.codex', 'plugins', 'job-search-automation'),
+        path.join(projectDir, '.agents', 'plugins', 'job-search-automation'),
       ];
   for (const pDir of candidatePluginDirs) {
     if (fs.existsSync(pDir)) {
@@ -944,7 +1050,7 @@ async function handleUninstall(args) {
     }
   }
 
-  // 2. Remove job-search-db from .mcp.json (Claude)
+  // 2. Remove job-search-db from .mcp.json (Claude / Standard)
   const mcpJsonPath = path.join(projectDir, '.mcp.json');
   if (fs.existsSync(mcpJsonPath)) {
     try {
@@ -974,13 +1080,34 @@ async function handleUninstall(args) {
           fs.rmSync(codexTomlPath);
           console.log(`${GREEN}[+] Cleaned up empty .codex/config.toml${RESET}`);
           try {
-            if (fs.readdirSync(path.join(projectDir, '.codex')).length === 0) {
-              fs.rmdirSync(path.join(projectDir, '.codex'));
-            }
+            const codexDir = path.join(projectDir, '.codex');
+            if (fs.readdirSync(codexDir).length === 0) fs.rmdirSync(codexDir);
           } catch {}
         } else {
           fs.writeFileSync(codexTomlPath, content + '\n');
           console.log(`${GREEN}[+] Removed job-search-db from .codex/config.toml${RESET}`);
+        }
+      }
+    } catch {}
+  }
+
+  // 2.2 Remove job-search-db from .vscode/mcp.json (Copilot / VS Code)
+  const vscodeMcpPath = path.join(projectDir, '.vscode', 'mcp.json');
+  if (fs.existsSync(vscodeMcpPath)) {
+    try {
+      const vscodeConfig = JSON.parse(fs.readFileSync(vscodeMcpPath, 'utf-8'));
+      if (vscodeConfig.mcpServers && vscodeConfig.mcpServers['job-search-db']) {
+        delete vscodeConfig.mcpServers['job-search-db'];
+        if (Object.keys(vscodeConfig.mcpServers).length === 0) {
+          fs.rmSync(vscodeMcpPath);
+          console.log(`${GREEN}[+] Cleaned up empty .vscode/mcp.json${RESET}`);
+          try {
+            const vscodeDir = path.join(projectDir, '.vscode');
+            if (fs.readdirSync(vscodeDir).length === 0) fs.rmdirSync(vscodeDir);
+          } catch {}
+        } else {
+          fs.writeFileSync(vscodeMcpPath, JSON.stringify(vscodeConfig, null, 2) + '\n');
+          console.log(`${GREEN}[+] Removed job-search-db from .vscode/mcp.json${RESET}`);
         }
       }
     } catch {}
