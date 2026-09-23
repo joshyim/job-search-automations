@@ -21,13 +21,14 @@
 // - Extracted records ceiling (default 250)
 //
 // Usage:
-//   node crawl-job-board.js <url> [--keyword <term>] [--json] [--allow-private]
+//   node crawl-job-board.js <url> [--posting] [--keyword <term>] [--json] [--allow-private]
 //                                [--max-time <sec>] [--max-bytes <bytes>]
 //                                [--max-redirects <n>] [--max-records <n>]
 //
 // Options:
+//   --posting              Fetch an individual job posting URL instead of crawling a board
 //   --keyword <term>       Filter listings to those containing <term> (case-insensitive)
-//   --json                 Output as JSON array instead of TSV
+//   --json                 Output as JSON array (or object in --posting mode) instead of TSV
 //   --allow-private        Allow private/loopback destinations (for testing only)
 //   --max-time <seconds>   Maximum time in seconds for HTTP request deadline (default: 15)
 //   --max-bytes <bytes>    Maximum response size in bytes (default: 5242880 = 5MB)
@@ -39,17 +40,21 @@
 //
 // Output (JSON):
 //   [{"title": "...", "url": "..."}, ...]
+//   or {"title": "...", "company": "...", "description": "...", ...} in --posting mode
 //
 // Exit codes:
 //   0  Success
 //   1  Usage error or missing arguments
 //   2  Network, parsing, or resource limit error
+//   3  JS required: SPA page requires JavaScript rendering with no ATS API or renderer available
+//   4  Posting not found (404/closed)
 // ==============================================================================
 
 import net from "node:net";
 import dns from "node:dns";
 import http from "node:http";
 import https from "node:https";
+import { execFileSync } from "node:child_process";
 
 const DEFAULT_MAX_TIME_SEC = 15;
 const DEFAULT_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -57,12 +62,9 @@ const DEFAULT_MAX_REDIRECTS = 5;
 const DEFAULT_MAX_RECORDS = 250;
 
 const args = process.argv.slice(2);
-if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
-  console.error("Usage: node crawl-job-board.js <url> [--keyword <term>] [--json] [--allow-private] [--max-time <sec>] [--max-bytes <bytes>] [--max-redirects <n>] [--max-records <n>]");
-  process.exit(1);
-}
 
-const targetUrl = args[0];
+let targetUrl = null;
+let isPostingMode = false;
 let keyword = null;
 let jsonOutput = false;
 let allowPrivate =
@@ -82,9 +84,20 @@ let maxRecords = process.env.CRAWLER_MAX_RECORDS
   ? parseInt(process.env.CRAWLER_MAX_RECORDS, 10)
   : DEFAULT_MAX_RECORDS;
 
-for (let i = 1; i < args.length; i++) {
+for (let i = 0; i < args.length; i++) {
   const arg = args[i];
-  if (arg === "--keyword" && args[i + 1]) {
+  if (arg === "--help" || arg === "-h") {
+    console.error("Usage: node crawl-job-board.js <url> [--posting] [--keyword <term>] [--json] [--allow-private] [--max-time <sec>] [--max-bytes <bytes>] [--max-redirects <n>] [--max-records <n>]");
+    process.exit(1);
+  } else if (arg === "--posting") {
+    isPostingMode = true;
+    if (args[i + 1] && !args[i + 1].startsWith("--")) {
+      if (!targetUrl) targetUrl = args[++i];
+    }
+  } else if (arg.startsWith("--posting=")) {
+    isPostingMode = true;
+    targetUrl = arg.slice("--posting=".length);
+  } else if (arg === "--keyword" && args[i + 1]) {
     keyword = args[++i].toLowerCase();
   } else if (arg.startsWith("--keyword=")) {
     keyword = arg.slice("--keyword=".length).toLowerCase();
@@ -116,7 +129,14 @@ for (let i = 1; i < args.length; i++) {
   } else if (arg.startsWith("--max-records=")) {
     const val = parseInt(arg.slice("--max-records=".length), 10);
     if (!isNaN(val) && val > 0) maxRecords = val;
+  } else if (!arg.startsWith("--") && !targetUrl) {
+    targetUrl = arg;
   }
+}
+
+if (!targetUrl) {
+  console.error("Usage: node crawl-job-board.js <url> [--posting] [--keyword <term>] [--json] [--allow-private] [--max-time <sec>] [--max-bytes <bytes>] [--max-redirects <n>] [--max-records <n>]");
+  process.exit(1);
 }
 
 const USER_AGENT =
@@ -653,6 +673,351 @@ async function crawlAshby(parsedUrl, options = {}) {
 }
 
 /**
+ * Attempt to fetch an individual Ashby posting via public job board API.
+ */
+async function fetchAshbyPosting(parsedUrl, options = {}) {
+  const match = parsedUrl.pathname.match(/^\/([a-zA-Z0-9_\-]+)\/([a-zA-Z0-9_\-]+)/i);
+  if (!match || !match[1] || !match[2]) return null;
+  const boardToken = match[1];
+  const jobId = match[2];
+  const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${boardToken}`;
+
+  try {
+    const res = await safeFetch(apiUrl, {
+      userAgent: USER_AGENT,
+      allowPrivate: options.allowPrivate ?? allowPrivate,
+      maxBytes: options.maxBytes ?? maxBytes,
+      timeout: options.maxTime || options.timeout,
+      maxRedirects: options.maxRedirects ?? maxRedirects,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!data.jobs || !Array.isArray(data.jobs)) return null;
+
+    const job = data.jobs.find(
+      (j) => j.id === jobId || (j.jobUrl && j.jobUrl.includes(jobId))
+    );
+    if (!job) return null;
+
+    const desc = job.descriptionPlain
+      ? job.descriptionPlain.trim()
+      : cleanText(job.descriptionHtml || "");
+
+    let loc = job.location || "";
+    if (job.isRemote && !loc.toLowerCase().includes("remote")) {
+      loc = loc ? `${loc} (Remote)` : "Remote";
+    }
+
+    return {
+      title: job.title ? job.title.trim() : "",
+      company: boardToken,
+      description: desc,
+      location: loc,
+      url: job.jobUrl || parsedUrl.href,
+      status: job.isListed !== false ? "open" : "closed",
+      department: job.department || "",
+      team: job.team || "",
+      employmentType: job.employmentType || "",
+      publishedAt: job.publishedAt || "",
+    };
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("forbidden") ||
+        err.message.includes("Forbidden") ||
+        err.message.includes("Invalid") ||
+        err.message.includes("exceeded") ||
+        err.message.includes("limit") ||
+        err.message.includes("timed out") ||
+        err.message.includes("deadline"))
+    ) {
+      throw err;
+    }
+    return null;
+  }
+}
+
+/**
+ * Attempt to fetch an individual Greenhouse posting via public API.
+ */
+async function fetchGreenhousePosting(parsedUrl, options = {}) {
+  const match = parsedUrl.pathname.match(/^\/([a-zA-Z0-9_\-]+)\/jobs\/([0-9]+)/i);
+  if (!match || !match[1] || !match[2]) return null;
+  const boardToken = match[1];
+  const jobId = match[2];
+  const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs/${jobId}`;
+
+  try {
+    const res = await safeFetch(apiUrl, {
+      userAgent: USER_AGENT,
+      allowPrivate: options.allowPrivate ?? allowPrivate,
+      maxBytes: options.maxBytes ?? maxBytes,
+      timeout: options.maxTime || options.timeout,
+      maxRedirects: options.maxRedirects ?? maxRedirects,
+    });
+    if (!res.ok) return null;
+    const job = await res.json();
+    if (!job || !job.title) return null;
+
+    const desc = cleanText(job.content || "");
+    const loc = (job.location && job.location.name) || "";
+
+    return {
+      title: job.title.trim(),
+      company: boardToken,
+      description: desc,
+      location: loc,
+      url: job.absolute_url || parsedUrl.href,
+      status: "open",
+      updatedAt: job.updated_at || "",
+    };
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("forbidden") ||
+        err.message.includes("Forbidden") ||
+        err.message.includes("Invalid") ||
+        err.message.includes("exceeded") ||
+        err.message.includes("limit") ||
+        err.message.includes("timed out") ||
+        err.message.includes("deadline"))
+    ) {
+      throw err;
+    }
+    return null;
+  }
+}
+
+/**
+ * Attempt to fetch an individual Lever posting via public API.
+ */
+async function fetchLeverPosting(parsedUrl, options = {}) {
+  const match = parsedUrl.pathname.match(/^\/([a-zA-Z0-9_\-]+)\/([a-zA-Z0-9_\-]+)/i);
+  if (!match || !match[1] || !match[2]) return null;
+  const company = match[1];
+  const jobId = match[2];
+  const apiUrl = `https://api.lever.co/v0/postings/${company}/${jobId}`;
+
+  try {
+    const res = await safeFetch(apiUrl, {
+      userAgent: USER_AGENT,
+      allowPrivate: options.allowPrivate ?? allowPrivate,
+      maxBytes: options.maxBytes ?? maxBytes,
+      timeout: options.maxTime || options.timeout,
+      maxRedirects: options.maxRedirects ?? maxRedirects,
+    });
+    if (!res.ok) return null;
+    const job = await res.json();
+    if (!job || !job.text) return null;
+
+    const desc = cleanText(job.descriptionPlain || job.description || "");
+    const loc = (job.categories && job.categories.location) || "";
+
+    return {
+      title: job.text.trim(),
+      company: company,
+      description: desc,
+      location: loc,
+      url: job.hostedUrl || parsedUrl.href,
+      status: "open",
+      workplaceType: (job.categories && job.categories.workplaceType) || "",
+    };
+  } catch (err) {
+    if (
+      err.message &&
+      (err.message.includes("forbidden") ||
+        err.message.includes("Forbidden") ||
+        err.message.includes("Invalid") ||
+        err.message.includes("exceeded") ||
+        err.message.includes("limit") ||
+        err.message.includes("timed out") ||
+        err.message.includes("deadline"))
+    ) {
+      throw err;
+    }
+    return null;
+  }
+}
+
+/**
+ * Check if HTML content is a client-side SPA placeholder requiring JavaScript.
+ */
+function detectSpaPlaceholder(html) {
+  if (!html) return true;
+  if (/you need to enable javascript to run this app/i.test(html)) {
+    return true;
+  }
+  if (
+    /<noscript\b[^>]*>[\s\S]*?(enable javascript|javascript is required|requires javascript|please enable javascript)[\s\S]*?<\/noscript>/i.test(
+      html
+    )
+  ) {
+    return true;
+  }
+  const clean = cleanText(html);
+  if (clean.length < 150 && /id=["'](root|app|__next)["']/i.test(html)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Opportunistically attempt headless snapshot using agent-browser CLI if installed.
+ */
+function tryAgentBrowser(url, timeoutMs = 15000) {
+  try {
+    execFileSync("which", ["agent-browser"], { stdio: "ignore" });
+    const output = execFileSync(
+      "agent-browser",
+      ["snapshot", "--headless", url],
+      {
+        timeout: timeoutMs,
+        encoding: "utf-8",
+        stdio: ["ignore", "pipe", "ignore"],
+      }
+    );
+    if (output && output.trim().length > 50) {
+      return output.trim();
+    }
+  } catch {
+    // CLI not in PATH or snapshot failed
+  }
+  return null;
+}
+
+function extractTitle(html) {
+  const ogTitleMatch =
+    html.match(/<meta\b[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
+    html.match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
+  if (ogTitleMatch && ogTitleMatch[1]) {
+    return cleanText(ogTitleMatch[1]);
+  }
+  const titleMatch = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
+  if (titleMatch && titleMatch[1]) {
+    return cleanText(titleMatch[1]);
+  }
+  return "";
+}
+
+function extractDescription(html) {
+  const ogDescMatch =
+    html.match(/<meta\b[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
+    html.match(/<meta\b[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i) ||
+    html.match(/<meta\b[^>]*content=["']([^"']+)["'][^>]*name=["']description["']/i);
+  if (ogDescMatch && ogDescMatch[1]) {
+    return cleanText(ogDescMatch[1]);
+  }
+  return cleanText(html);
+}
+
+/**
+ * Fetch generic HTML posting with SPA detection and optional headless fallback.
+ */
+async function fetchHtmlPosting(url, options = {}) {
+  const isAllowPrivate = options.allowPrivate ?? allowPrivate;
+  const res = await safeFetch(url, {
+    userAgent: USER_AGENT,
+    allowPrivate: isAllowPrivate,
+    maxBytes: options.maxBytes ?? maxBytes,
+    timeout: options.maxTime || options.timeout,
+    maxRedirects: options.maxRedirects ?? maxRedirects,
+  });
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 410) {
+      console.error(`Posting not found (HTTP ${res.status}): ${url}`);
+      process.exit(4);
+    }
+    throw new Error(`HTTP ${res.status}: ${res.statusText || res.status}`);
+  }
+
+  const html = await res.text();
+
+  if (detectSpaPlaceholder(html)) {
+    // Opportunistic fallback to agent-browser CLI if installed
+    const snapshot = tryAgentBrowser(
+      url,
+      options.maxTime ? options.maxTime * 1000 : 15000
+    );
+    if (snapshot) {
+      return {
+        title: extractTitle(html) || "Job Posting",
+        company: new URL(url).hostname,
+        description: snapshot,
+        location: "",
+        url: url,
+        status: "open",
+        renderedVia: "agent-browser",
+      };
+    }
+
+    // SPA placeholder detected without JS renderer available
+    const errPayload = {
+      error: "js_required",
+      message:
+        "SPA page requires JavaScript rendering; no ATS API or JS renderer available",
+      url: url,
+    };
+    if (jsonOutput) {
+      console.log(JSON.stringify(errPayload, null, 2));
+    } else {
+      console.error(`Error [js_required]: ${errPayload.message} for ${url}`);
+    }
+    process.exit(3);
+  }
+
+  const title = extractTitle(html) || "Job Posting";
+  const desc = extractDescription(html);
+
+  return {
+    title: title,
+    company: new URL(url).hostname,
+    description: desc,
+    location: "",
+    url: url,
+    status: "open",
+  };
+}
+
+/**
+ * Resolve an individual job posting across ATS APIs or HTML.
+ */
+async function fetchPosting(targetUrl, options = {}) {
+  let parsedTarget;
+  try {
+    parsedTarget = new URL(targetUrl);
+  } catch {
+    console.error(`Error: Invalid URL: ${targetUrl}`);
+    process.exit(1);
+  }
+
+  if (parsedTarget.protocol !== "http:" && parsedTarget.protocol !== "https:") {
+    console.error(
+      `Error: Invalid protocol: ${parsedTarget.protocol}. Only http: and https: are allowed.`
+    );
+    process.exit(1);
+  }
+
+  const targetHost = parsedTarget.hostname.toLowerCase();
+  let posting = null;
+
+  // 1. Check specialized ATS posting endpoints using parsed hostname
+  if (targetHost === "ashbyhq.com" || targetHost.endsWith(".ashbyhq.com")) {
+    posting = await fetchAshbyPosting(parsedTarget, options);
+  } else if (targetHost === "greenhouse.io" || targetHost.endsWith(".greenhouse.io")) {
+    posting = await fetchGreenhousePosting(parsedTarget, options);
+  } else if (targetHost === "lever.co" || targetHost.endsWith(".lever.co")) {
+    posting = await fetchLeverPosting(parsedTarget, options);
+  }
+
+  // 2. Generic HTTP fetch if not ATS or ATS returned null
+  if (!posting) {
+    posting = await fetchHtmlPosting(targetUrl, options);
+  }
+
+  return posting;
+}
+
+/**
  * Generic lightweight HTML crawler via safe HTTP fetch.
  */
 async function crawlHtml(url, options = {}) {
@@ -781,6 +1146,29 @@ async function crawlHtml(url, options = {}) {
       maxRedirects,
       maxRecords,
     };
+
+    // --- Individual Posting Mode ---
+    if (isPostingMode) {
+      const posting = await fetchPosting(targetUrl, crawlOpts);
+      if (!posting) {
+        console.error(`Posting not found at ${targetUrl}`);
+        clearTimeout(overallTimer);
+        process.exit(4);
+      }
+
+      if (jsonOutput) {
+        console.log(JSON.stringify(posting, null, 2));
+      } else {
+        console.log(`Title: ${posting.title}`);
+        console.log(`Company: ${posting.company}`);
+        if (posting.location) console.log(`Location: ${posting.location}`);
+        console.log(`Status: ${posting.status}`);
+        console.log(`URL: ${posting.url}\n`);
+        console.log(`Description:\n${posting.description}`);
+      }
+      clearTimeout(overallTimer);
+      process.exit(0);
+    }
 
     // 1. Check specialized ATS endpoints using parsed hostname
     if (targetHost === "greenhouse.io" || targetHost.endsWith(".greenhouse.io")) {

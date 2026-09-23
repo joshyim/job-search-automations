@@ -245,6 +245,41 @@ assert_contains "$RESOURCE_RESULT" '"deadlineExpired":true' "Crawler aborts hang
 assert_contains "$RESOURCE_RESULT" '"redirectCapped":true' "Crawler aborts when exceeding --max-redirects limit"
 assert_contains "$RESOURCE_RESULT" '"recordsCapped":true' "Crawler caps extracted listings to --max-records"
 
+
+# 7. Individual Posting & SPA Placeholder Detection (PRO-62)
+echo -e "\n${BOLD}--- 7. Individual Posting & SPA Placeholder Detection (PRO-62) ---${RESET}"
+
+# 7.1 Live Ashby Posting Resolution
+POSTING_OUTPUT=$(node "$CRAWLER_SCRIPT" "https://jobs.ashbyhq.com/vanta/cf4358d4-1f34-40cc-b5b4-31a2e001136f" --posting --json 2>&1 || true)
+assert_contains "$POSTING_OUTPUT" '"title":' "Ashby posting resolution returns title"
+assert_contains "$POSTING_OUTPUT" '"company": "vanta"' "Ashby posting resolution returns company"
+assert_contains "$POSTING_OUTPUT" '"description":' "Ashby posting resolution returns description"
+assert_contains "$POSTING_OUTPUT" '"status": "open"' "Ashby posting resolution returns status open"
+
+# 7.2 SPA Placeholder Early Detection (Mock Server)
+SPA_TEST_SCRIPT="
+const http = require('http');
+const { exec } = require('child_process');
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end('<!DOCTYPE html><html><head><title>SPA Job</title></head><body><noscript>You need to enable JavaScript to run this app.</noscript><div id=\"root\"></div></body></html>');
+}).listen(0, '127.0.0.1', () => {
+  const port = server.address().port;
+  exec('node scripts/crawl-job-board.js http://127.0.0.1:' + port + '/job --posting --allow-private --json', (err, stdout, stderr) => {
+    server.close();
+    const exitCode = err ? err.code : 0;
+    const output = (stdout || '') + (stderr || '');
+    const isJsRequired = output.includes('js_required');
+    console.log(JSON.stringify({ exitCode, isJsRequired }));
+  });
+});
+"
+
+SPA_RESULT=$(cd "$ROOT_DIR" && node -e "$SPA_TEST_SCRIPT")
+assert_contains "$SPA_RESULT" '"exitCode":3' "SPA placeholder triggers exit code 3 (js_required)"
+assert_contains "$SPA_RESULT" '"isJsRequired":true' "SPA placeholder returns structured js_required error"
+
 echo ""
 echo "=============================================================="
 echo -e "Results: ${GREEN}${TEST_PASSED} passed${RESET}, ${RED}${TEST_FAILED} failed${RESET}"

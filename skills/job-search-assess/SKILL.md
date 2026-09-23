@@ -63,7 +63,21 @@ Before processing:
 
 For each pending posting in the bounded batch, in queue order:
 
-**Validate:** Fetch the posting URL content using lightweight HTTP fetch or Claude Code's native `WebFetch`.
+**Validate & Fetch Posting Details:**
+- **Primary method for ATS URLs:** For Ashby, Greenhouse, or Lever postings, use the lightweight crawler in posting mode:
+  ```bash
+  # In installed workspace:
+  node .claude/plugins/job-search-automations/scripts/crawl-job-board.js "<posting_url>" --posting --json
+  # In plugin repository:
+  node scripts/crawl-job-board.js "<posting_url>" --posting --json
+  ```
+  This resolves complete job details (title, description, location) via public ATS APIs (such as Ashby's unauthenticated public job board API) with zero browser overhead.
+- **When using native `WebFetch` or direct HTTP fetch:**
+  - **Early SPA Placeholder Detection & Circuit Breaker Prevention**:
+    - If a page returns `"You need to enable JavaScript to run this app."`, an empty `<noscript>` JavaScript requirement, or an empty SPA skeleton, **detect this on the very first attempt**.
+    - **CRITICAL**: Never repeat `WebFetch` calls across remaining postings from the same host or company when an SPA placeholder is detected. Repeating identical `WebFetch` calls trips harness loop detectors (circuit breaker abort after 7 calls).
+    - If the URL is Ashby-hosted (`jobs.ashbyhq.com/...`), immediately switch to `node scripts/crawl-job-board.js "<posting_url>" --posting --json`.
+    - If the site is a custom unsupported SPA with no ATS API, immediately call `update_queue_status({ url: "<posting_url>", status: "skipped", notes: "SPA page requires JavaScript rendering; no ATS API available" })` and skip all remaining postings for that company to advance the batch cleanly.
 - **Fast failure:** If the URL returns 404/410, redirects to a generic careers board/homepage, or fails to fetch:
   - Immediately call MCP tool `update_queue_status({ url: "<posting_url>", status: "skipped", notes: "Page unavailable or redirected to generic careers board" })`.
   - Proceed directly to the next posting without retrying.

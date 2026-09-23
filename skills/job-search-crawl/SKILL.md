@@ -84,6 +84,6 @@ Each call adds the posting with status `pending`.
 ## Gotchas
 
 - Many ATS platforms (Ashby, Greenhouse, Lever) have direct API adapters in `scripts/crawl-job-board.js`.
-- If a custom careers site yields no listings via lightweight fetch, use Claude Code's native WebSearch / WebFetch.
-- Ashby API often truncates. Never rely on it as sole source.
+- **Ashby Public API**: Ashby career boards (`jobs.ashbyhq.com/<boardToken>`) and postings are client-rendered SPAs that return empty shells to raw `WebFetch`. Ashby exposes an unauthenticated public job board API at `https://api.ashbyhq.com/posting-api/job-board/<boardToken>` which provides complete plain-text and HTML job descriptions. Always crawl Ashby boards and postings via `scripts/crawl-job-board.js` rather than raw `WebFetch`.
+- If a custom careers site yields no listings or returns an SPA JavaScript placeholder, do not burn repeated fetch attempts. Fast-fail and proceed to the next target.
 - Crawl output may concatenate title/department/location. Parse the title as text before the first department label.

@@ -91,8 +91,8 @@ The Job Search Automation workspace operates on a clean separation of three comp
      - Assess: Process at most 5 pending postings per scheduled run (`get_pending_queue`).
      - Company Discovery (`company-search`): Add at most 3–5 newly qualified companies per run.
      - Title Discovery (`title-discovery`): Add at most 1–3 new validated title patterns per run.
-   - **Zero Browser Automation**: Never invoke interactive browser tools during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple WebFetch.
-   - **Fast-Fail URLs**: If an ATS board is unreachable or redirects/404s, mark it skipped via `update_queue_status` and move to the next item immediately. Never enter retry loops.
+   - **Zero Browser Automation & ATS Fallback**: Never invoke interactive browser tools during unattended runs. Stick strictly to lightweight HTTP / ATS APIs and simple WebFetch. For Ashby or other ATS SPAs, use the crawler in posting mode (`crawl-job-board.js --posting`) which resolves complete job text via public APIs.
+   - **Circuit Breaker Prevention & Fast-Fail URLs**: If an ATS board is unreachable or redirects/404s, mark it skipped via `update_queue_status` and move to the next item immediately. Never enter retry loops. Crucially, when an SPA placeholder ("You need to enable JavaScript to run this app.") is detected on fetch #1, immediately switch to the ATS API or skip the company—never repeat `WebFetch` calls across identical shells to avoid tripping the 7-call loop detector circuit breaker.
    - **Strict Anti-Hallucination Guardrail (No Weekly Digest)**: There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest routine.
 6. **Candidate Status Ownership & Human-in-the-Loop Disposition**:
    - Automated assessment and crawler agents must **never** unilaterally set candidate status to `not_pursuing`, `closed`, `rejected`, `applied`, or any other disposition status.

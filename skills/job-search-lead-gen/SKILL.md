@@ -70,7 +70,7 @@ Record the run outcome for this company using MCP tool `log_run`:
 ```
 Then remove any temporary files for this company under `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` (and ensure `<selected-directory>/.job-search/tmp/` is clean).
 
-On failure at any point: call `log_run` with the failure details, clean up the company's temp files in `<selected-directory>/.job-search/tmp/`, then continue to the next company.
+On failure at any point (including unresolvable SPA pages or network errors): call `log_run` with the failure details, clean up the company's temp files in `<selected-directory>/.job-search/tmp/`, then continue to the next company immediately. A single company's crawl or assessment failure must never abort the remaining companies in the batch.
 
 ### 3. Sort pipeline tracker
 

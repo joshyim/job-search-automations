@@ -353,6 +353,37 @@ else
 fi
 
 echo ""
+echo "--- 11. Verifying SPA Placeholder Early Detection & Circuit Breaker Prevention (PRO-62) ---"
+
+# job-search-assess: verifies circuit breaker prevention directive
+if grep -qi "Never repeat \`WebFetch\` calls" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Contains circuit breaker prevention directive"
+else
+  fail "job-search-assess: Missing circuit breaker prevention directive"
+fi
+
+# job-search-assess: documents --posting flag for crawler
+if grep -qi "\-\-posting" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Documents crawler --posting flag"
+else
+  fail "job-search-assess: Missing --posting flag in assessment skill"
+fi
+
+# job-search-crawl: documents Ashby public API
+if grep -qi "posting-api/job-board" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Documents Ashby public API endpoint"
+else
+  fail "job-search-crawl: Missing Ashby public API endpoint documentation"
+fi
+
+# CLAUDE.md: documents circuit breaker prevention and ATS fallback
+if grep -qi "Circuit Breaker Prevention" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents circuit breaker prevention"
+else
+  fail "CLAUDE.md: Missing circuit breaker prevention in CLAUDE.md"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="
