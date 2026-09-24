@@ -437,6 +437,48 @@ else
 fi
 
 echo ""
+echo "--- 13. Verifying Search Fallback Rate Limiting & Query Pacing (PRO-64) ---"
+
+# crawl: verifies search fallback query budget
+if grep -qi "Search Fallback Query Pacing & Rate Limit Guardrails" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "Query Budget" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "1 targeted query per company" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Defines search fallback query budget (max 1 per company)"
+else
+  fail "job-search-crawl: Missing search fallback query budget"
+fi
+
+# crawl: verifies rate limit detection and anti-retry rule
+if grep -qi "DuckDuckGo is rate-limiting this machine" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "Zero-Retry Rule" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Contains rate limit detection and zero-retry rule"
+else
+  fail "job-search-crawl: Missing rate limit detection or zero-retry rule"
+fi
+
+# lead-gen: verifies batch search circuit breaker
+if grep -qi "BATCH SEARCH CIRCUIT BREAKER" "$SKILLS_DIR/job-search-lead-gen/SKILL.md" && \
+   grep -qi "disable the search fallback path" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Defines Batch Search Circuit Breaker"
+else
+  fail "job-search-lead-gen: Missing Batch Search Circuit Breaker"
+fi
+
+# CLAUDE.md: includes rate_limited in failure taxonomy
+if grep -qi "rate_limited" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Includes rate_limited in failure taxonomy"
+else
+  fail "CLAUDE.md: Missing rate_limited in failure taxonomy"
+fi
+
+# AGENTS.md: includes rate_limited in failure taxonomy
+if grep -qi "rate_limited" "$PLUGIN_ROOT/AGENTS.md"; then
+  pass "AGENTS.md: Includes rate_limited in failure taxonomy"
+else
+  fail "AGENTS.md: Missing rate_limited in failure taxonomy"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="

@@ -124,8 +124,15 @@ In a user's project workspace after installation, the source repo and git histor
        - `unreachable`: Careers board or posting returned 404/410/500 or DNS failure (crawler exit 4)
        - `timeout`: Network request exceeded execution deadline (crawler exit 2)
        - `blocked`: Cloudflare, captcha, or 403 Forbidden
+       - `rate_limited`: Search provider rate-limited (e.g. DuckDuckGo 429/202 block) during search fallback; halts further search calls for the batch
        - `no_postings`: Careers board yielded 0 listings or no matching titles
        - `assessment_error`: Error reading resume or scoring against rubric
+   - **Search Fallback Query Pacing & Rate Limit Guardrails (PRO-64)**:
+     - Search fallback (`WebSearch`) is ONLY invoked if the lightweight crawler fails or yields 0 postings on custom non-ATS boards.
+     - **Query Budget**: Limit search fallback to at most **1 targeted query per company** (e.g. `"<company>" "jobs" site:<careers_domain>`). Never loop over individual target title patterns.
+     - **Batch Search Cap**: In unattended/batch runs, limit search fallback invocations to at most 2 total searches across the entire batch.
+     - **Zero-Retry on Rate Limiting**: If DuckDuckGo or the search provider returns a rate limit message (`"DuckDuckGo is rate-limiting this machine..."`, HTTP 429, or HTTP 202), immediately mark the company as `failed` with `error_type: "rate_limited"`. **NEVER retry or rephrase the query**.
+     - **Batch Circuit Breaker**: Once a rate limit occurs, immediately disable search fallback for all subsequent companies in the batch and continue using direct crawler only.
    - **Strict Anti-Hallucination Guardrail (No Weekly Digest)**: There is **NO Weekly Digest routine** in this repository. Agents must never create, suggest, or schedule a weekly digest routine. Only configure the 4 canonical routines documented in [installation-steps.md](file:///Users/joshyim/projects/agent-automations/job-search-automations/installation-steps.md).
 9. **Candidate Status Ownership & Human-in-the-Loop Disposition**:
    - Automated assessment and crawler agents must **never** unilaterally set candidate status to `not_pursuing`, `closed`, `rejected`, `applied`, or any other disposition status.

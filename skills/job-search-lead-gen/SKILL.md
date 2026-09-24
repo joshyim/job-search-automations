@@ -74,7 +74,7 @@ The assess skill retrieves pending roles via `get_pending_queue`, dynamically fe
   Then remove any temporary files for this company under `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json`.
 
 - **Per-Company Error Isolation Boundary (On Failure):**
-  If ANY error occurs during a company's crawl or assessment (e.g., crawler exit code 1/2/3/4, `js_required` SPA placeholder, network timeout, HTTP 404/500, Cloudflare block, or JSON parse error):
+  If ANY error occurs during a company's crawl or assessment (e.g., crawler exit code 1/2/3/4, `js_required` SPA placeholder, network timeout, HTTP 404/500, Cloudflare block, search provider `rate_limited` block, or JSON parse error):
   1. **Clean up ephemeral files**: Remove `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` immediately.
   2. **Update company record**: Call `update_company_crawl_status` to stamp the failure reason into the database for manual review:
      ```json
@@ -104,6 +104,7 @@ The assess skill retrieves pending roles via `get_pending_queue`, dynamically fe
      ```
   4. **SKIP and CONTINUE**: Advance immediately to the next company in the batch.
   5. **CRITICAL GUARDRAIL**: A single company's failure must NEVER abort the batch run. Never repeat `WebFetch` calls across postings when an error or SPA shell is encountered to prevent tripping harness circuit breakers (7 repeated calls).
+  6. **BATCH SEARCH CIRCUIT BREAKER (PRO-64)**: If any company triggers a `rate_limited` search failure (e.g. DuckDuckGo rate limiting), immediately disable the search fallback path for all subsequent companies in the batch. Remaining companies in the batch must proceed using direct page/ATS crawling only. Do not invoke web search again during the current batch run.
 
 ### 3. Sort pipeline tracker
 
