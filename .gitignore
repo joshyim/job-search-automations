@@ -8,7 +8,7 @@ Desktop.ini
 
 # Node & Build Outputs
 node_modules/
-dist/
+# dist/ (shipped in release)
 build/
 *.log
 npm-debug.log*

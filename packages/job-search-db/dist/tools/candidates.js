@@ -1,0 +1,91 @@
+import { z } from 'zod';
+import { httpUrlSchema } from './validation.js';
+export function registerCandidateTools(server, workspaceManager) {
+    server.tool('add_candidate', 'Add or update a scored candidate job opportunity', {
+        selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+        directory: z.string().optional().describe('Alias for selected_directory'),
+        company_name: z.string().describe('Company name'),
+        job_title: z.string().describe('Job title'),
+        url: httpUrlSchema.describe('Job posting URL'),
+        location: z.string().optional().describe('Job location (e.g. Remote, San Francisco, CA)'),
+        score: z.number().optional().describe('Overall match score (0-10 or 0-100)'),
+        breakdown: z.record(z.number()).optional().describe('Score breakdown by rubric dimension'),
+        status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new"). Note: Assessment agents must only set "new"; other statuses are reserved for human user disposition.'),
+        notes: z.string().optional().describe('Notes, key strengths, or interview highlights'),
+    }, async ({ selected_directory, directory, company_name, job_title, url, location, score, breakdown, status, notes }) => {
+        try {
+            const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+            const candidate = await adapter.addCandidate({
+                company_name,
+                job_title,
+                url,
+                location,
+                score,
+                breakdown,
+                status: status,
+                notes,
+            });
+            return {
+                content: [{ type: 'text', text: JSON.stringify(candidate, null, 2) }],
+            };
+        }
+        catch (err) {
+            return {
+                isError: true,
+                content: [{ type: 'text', text: err.message }],
+            };
+        }
+    });
+    server.tool('update_candidate_status', 'Update the status of a candidate job posting (new, applied, in_progress, not_pursuing, closed, interviewing, rejected, offer). Reserved for human user disposition or explicit user instruction.', {
+        selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+        directory: z.string().optional().describe('Alias for selected_directory'),
+        url: httpUrlSchema.describe('The URL of the candidate to update'),
+        status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).describe('New application status'),
+        notes: z.string().optional().describe('Optional notes about the status update'),
+    }, async ({ selected_directory, directory, url, status, notes }) => {
+        try {
+            const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+            const candidate = await adapter.updateCandidateStatus(url, status, notes);
+            return {
+                content: [{ type: 'text', text: JSON.stringify(candidate, null, 2) }],
+            };
+        }
+        catch (err) {
+            return {
+                isError: true,
+                content: [{ type: 'text', text: err.message }],
+            };
+        }
+    });
+    server.tool('get_candidates', 'Retrieve job candidates, filterable by status, company, or score, and sortable', {
+        selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
+        directory: z.string().optional().describe('Alias for selected_directory'),
+        status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Filter by status'),
+        min_score: z.number().optional().describe('Filter by minimum score'),
+        company_name: z.string().optional().describe('Filter by company name'),
+        limit: z.number().optional().describe('Limit the number of candidates returned'),
+        sort_by: z.enum(['score', 'discovered_at']).optional().describe('Sort field ("score" or "discovered_at", default "score")'),
+        sort_order: z.enum(['asc', 'desc']).optional().describe('Sort direction ("asc" or "desc", default "desc")'),
+    }, async ({ selected_directory, directory, status, min_score, company_name, limit, sort_by, sort_order }) => {
+        try {
+            const adapter = await workspaceManager.getAdapter(selected_directory || directory);
+            const candidates = await adapter.getCandidates({
+                status: status,
+                min_score,
+                company_name,
+                limit,
+                sort_by,
+                sort_order,
+            });
+            return {
+                content: [{ type: 'text', text: JSON.stringify(candidates, null, 2) }],
+            };
+        }
+        catch (err) {
+            return {
+                isError: true,
+                content: [{ type: 'text', text: err.message }],
+            };
+        }
+    });
+}

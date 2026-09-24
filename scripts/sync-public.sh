@@ -2,8 +2,10 @@
 # ==============================================================================
 # sync-public.sh - Synchronize job-search-automations to public standalone repo
 #
-# Pushes the job-search-automations directory from the monorepo to the public
-# github.com/joshyim/job-search-automations repository using git subtree.
+# Pushes the job-search-automations directory to github.com/joshyim/job-search-automations.
+# Synthesizes pre-built dist/ artifacts and strips the prepare script exclusively
+# for the public standalone release, keeping the monorepo 100% clean and enabling
+# instant, zero-devDependency npx installations for end users.
 # ==============================================================================
 
 set -eo pipefail
@@ -102,33 +104,122 @@ echo -e "\n${BOLD}Latest commits in $SUBPREFIX:${RESET}"
 git log -n 5 --oneline -- "$SUBPREFIX"
 echo ""
 
+# Ensure packages are pre-built locally for inclusion in public release
+echo -e "${CYAN}${BOLD}[1/4] Building packages in $SUBPREFIX...${RESET}"
+(cd "$REPO_ROOT/$SUBPREFIX" && npm run build --silent)
+
+DB_DIST="$REPO_ROOT/$SUBPREFIX/packages/job-search-db/dist/index.js"
+UI_DIST="$REPO_ROOT/$SUBPREFIX/packages/job-search-ui/dist/server.js"
+if [ ! -f "$DB_DIST" ] || [ ! -f "$UI_DIST" ]; then
+  echo -e "${RED}Error: Build outputs missing (expected $DB_DIST and $UI_DIST).${RESET}"
+  exit 1
+fi
+echo -e "${GREEN}✓ Packages successfully built.${RESET}"
+
+# Fetch latest public remote branch
+echo -e "\n${CYAN}${BOLD}[2/4] Fetching remote '$REMOTE_NAME/$BRANCH'...${RESET}"
+git fetch "$REMOTE_NAME" "$BRANCH" --quiet 2>/dev/null || true
+PUBLIC_HEAD="$(git rev-parse "$REMOTE_NAME/$BRANCH" 2>/dev/null || true)"
+
+# Split subtree from monorepo commits
+echo -e "\n${CYAN}${BOLD}[3/4] Splitting subtree for $SUBPREFIX...${RESET}"
+SPLIT_REV="$(git subtree split --prefix="$SUBPREFIX")"
+
+# Synthesize public release tree with pre-built dist/ and prepare script stripped
+echo -e "${CYAN}Synthesizing zero-compile public release artifacts...${RESET}"
+TMP_WORKTREE="$(mktemp -d -t public-sync-worktree.XXXXXX)"
+cleanup_worktree() {
+  if [ -d "$TMP_WORKTREE" ]; then
+    git worktree remove --force "$TMP_WORKTREE" 2>/dev/null || true
+    rm -rf "$TMP_WORKTREE" 2>/dev/null || true
+  fi
+}
+trap cleanup_worktree EXIT
+
+git worktree add --detach "$TMP_WORKTREE" "$SPLIT_REV" --quiet
+mkdir -p "$TMP_WORKTREE/packages/job-search-db" "$TMP_WORKTREE/packages/job-search-ui"
+cp -R "$REPO_ROOT/$SUBPREFIX/packages/job-search-db/dist" "$TMP_WORKTREE/packages/job-search-db/"
+cp -R "$REPO_ROOT/$SUBPREFIX/packages/job-search-ui/dist" "$TMP_WORKTREE/packages/job-search-ui/"
+
+# Strip prepare script from package.json for zero-compile npx installs
+node -e '
+  const fs = require("fs");
+  const file = process.argv[1] + "/package.json";
+  if (fs.existsSync(file)) {
+    const p = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (p.scripts && p.scripts.prepare) {
+      delete p.scripts.prepare;
+      fs.writeFileSync(file, JSON.stringify(p, null, 2) + "\n");
+    }
+  }
+' "$TMP_WORKTREE"
+
+# Unignore dist/ in .gitignore for public release
+node -e '
+  const fs = require("fs");
+  const file = process.argv[1] + "/.gitignore";
+  if (fs.existsSync(file)) {
+    let g = fs.readFileSync(file, "utf8");
+    g = g.replace(/^dist\/$/m, "# dist/ (shipped in release)");
+    fs.writeFileSync(file, g);
+  }
+' "$TMP_WORKTREE"
+
+git -C "$TMP_WORKTREE" add -f packages/job-search-db/dist packages/job-search-ui/dist package.json .gitignore
+TARGET_TREE="$(git -C "$TMP_WORKTREE" write-tree)"
+git worktree remove --force "$TMP_WORKTREE" >/dev/null 2>&1 || rm -rf "$TMP_WORKTREE"
+trap - EXIT
+
+# Check if public repository is already up to date
+if [ -n "$PUBLIC_HEAD" ]; then
+  PUBLIC_TREE="$(git rev-parse "$PUBLIC_HEAD^{tree}" 2>/dev/null || true)"
+  if [ "$TARGET_TREE" = "$PUBLIC_TREE" ]; then
+    echo -e "\n${GREEN}${BOLD}✓ Public repository is already up to date with pre-built artifacts!${RESET}"
+    echo -e "Latest release commit: ${CYAN}$PUBLIC_HEAD${RESET}\n"
+    exit 0
+  fi
+fi
+
+# Formulate commit message from latest subtree commit
+LATEST_MSG="$(git log -1 --pretty=%B "$SPLIT_REV" 2>/dev/null || echo "chore(release): update public standalone distribution")"
+RELEASE_MSG="$LATEST_MSG"$'\n\n'"Release: Include pre-built dist artifacts for zero-compile npx install"
+
+if [ "$FORCE" = true ] || [ -z "$PUBLIC_HEAD" ]; then
+  RELEASE_COMMIT="$(git commit-tree "$TARGET_TREE" -p "$SPLIT_REV" -m "$RELEASE_MSG")"
+else
+  RELEASE_COMMIT="$(git commit-tree "$TARGET_TREE" -p "$PUBLIC_HEAD" -m "$RELEASE_MSG")"
+fi
+
+echo -e "${GREEN}✓ Release tree prepared ($RELEASE_COMMIT)${RESET}"
+
 if [ "$DRY_RUN" = true ]; then
-  echo -e "${YELLOW}[DRY RUN] Would execute:${RESET}"
-  if [ "$FORCE" = true ]; then
-    echo "  SPLIT_REV=\$(git subtree split --prefix=$SUBPREFIX)"
-    echo "  git push $REMOTE_NAME \$SPLIT_REV:$BRANCH --force"
+  echo -e "\n${YELLOW}[DRY RUN] Would execute:${RESET}"
+  echo "  Subtree split:  $SPLIT_REV"
+  echo "  Target tree:    $TARGET_TREE"
+  echo "  Release commit: $RELEASE_COMMIT"
+  if [ "$FORCE" = true ] || [ -z "$PUBLIC_HEAD" ]; then
+    echo "  Command:        git push $REMOTE_NAME $RELEASE_COMMIT:refs/heads/$BRANCH --force"
   else
-    echo "  git subtree push --prefix=$SUBPREFIX $REMOTE_NAME $BRANCH"
+    echo "  Command:        git push $REMOTE_NAME $RELEASE_COMMIT:refs/heads/$BRANCH"
   fi
   echo -e "${GREEN}Dry run complete. No changes were pushed.${RESET}"
   exit 0
 fi
 
 if [ "$AUTO_CONFIRM" = false ]; then
-  read -rp "Push the latest $SUBPREFIX commits to $PUBLIC_REPO_URL ($BRANCH)? [y/N] " CONFIRM_PUSH
+  read -rp "Push public release commit to $PUBLIC_REPO_URL ($BRANCH)? [y/N] " CONFIRM_PUSH
   if [[ ! "$CONFIRM_PUSH" =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Sync cancelled by user.${RESET}"
     exit 0
   fi
 fi
 
-echo -e "\n${CYAN}Splitting subtree and pushing to $REMOTE_NAME ($BRANCH)...${RESET}"
-if [ "$FORCE" = true ]; then
-  SPLIT_REV="$(git subtree split --prefix="$SUBPREFIX")"
-  git push "$REMOTE_NAME" "$SPLIT_REV:$BRANCH" --force
+echo -e "\n${CYAN}${BOLD}[4/4] Pushing release commit to $REMOTE_NAME ($BRANCH)...${RESET}"
+if [ "$FORCE" = true ] || [ -z "$PUBLIC_HEAD" ]; then
+  git push "$REMOTE_NAME" "$RELEASE_COMMIT:refs/heads/$BRANCH" --force
 else
-  git subtree push --prefix="$SUBPREFIX" "$REMOTE_NAME" "$BRANCH"
+  git push "$REMOTE_NAME" "$RELEASE_COMMIT:refs/heads/$BRANCH"
 fi
 
-echo -e "\n${GREEN}${BOLD}✓ Public repository successfully synchronized!${RESET}"
+echo -e "\n${GREEN}${BOLD}✓ Public repository successfully synchronized with pre-built artifacts!${RESET}"
 echo -e "View release at: ${CYAN}https://github.com/joshyim/job-search-automations${RESET}\n"
