@@ -44,11 +44,11 @@ For each company in the batch, execute both phases completely before moving to t
 
 **Phase A - Crawl:**
 Read and follow `skills/job-search-crawl/SKILL.md` for this company. Pass the company name, careers URL, and workspace directory.
-The crawl skill uses `scripts/crawl-job-board.js`, matches postings against title patterns via `list_title_patterns`, deduplicates via `check_url_exists`, and writes pending roles via `add_to_queue`. For ATS boards (Ashby, Greenhouse, Lever), it leverages known public ATS APIs—specifically Ashby's unauthenticated public board API (`/posting-api/job-board/<boardSlug>`), avoiding the authenticated `/posting-api/job/{id}` endpoint.
+The company's `ats_platform` (from `get_batch` or `list_companies`) is checked upfront to select the optimal crawling strategy directly. The crawl skill uses `scripts/crawl-job-board.js`, matches postings against title patterns via `list_title_patterns`, deduplicates via `check_url_exists`, and writes pending roles via `add_to_queue` with pre-tagged `ats_platform`. For ATS boards (Ashby, Greenhouse, Lever), it leverages known public ATS APIs—specifically Ashby's unauthenticated public board API (`/posting-api/job-board/<boardSlug>`), avoiding the authenticated `/posting-api/job/{id}` endpoint.
 
 **Phase B - Assess:**
 Read and follow `skills/job-search-assess/SKILL.md` for this company. Pass the company name and workspace directory.
-The assess skill retrieves pending roles via `get_pending_queue`, dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<selected-directory>/.job-search/resume.pdf`, records scored roles via `add_candidate` with `status: "new"` (disposition is reserved for the user), and updates queue status via `update_queue_status`.
+The assess skill retrieves pending roles via `get_pending_queue`, inspects each entry's pre-tagged `ats_platform` to select the right fetch strategy (public ATS API vs crawler vs HTTP fetch), dynamically fetches the rubric via `get_scoring_rubric` and skills via `list_skills`, scores against `<selected-directory>/.job-search/resume.pdf`, records scored roles via `add_candidate` with `status: "new"` (disposition is reserved for the user), and updates queue status via `update_queue_status`.
 
 **Phase C - Log and clean up:**
 - **On Success:**

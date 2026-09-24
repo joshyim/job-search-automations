@@ -68,6 +68,27 @@ function getKeychainSecret(service, account) {
   }
 }
 
+function detectAtsPlatform(url) {
+  if (!url || typeof url !== 'string') return null;
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname === 'ashbyhq.com' || hostname.endsWith('.ashbyhq.com')) return 'ashby';
+    if (hostname === 'greenhouse.io' || hostname.endsWith('.greenhouse.io') || hostname === 'grnh.se' || hostname.endsWith('.grnh.se')) return 'greenhouse';
+    if (hostname === 'lever.co' || hostname.endsWith('.lever.co')) return 'lever';
+    if (hostname === 'myworkdayjobs.com' || hostname.endsWith('.myworkdayjobs.com') || hostname === 'workday.com' || hostname.endsWith('.workday.com')) return 'workday';
+    if (hostname === 'smartrecruiters.com' || hostname.endsWith('.smartrecruiters.com')) return 'smartrecruiters';
+    if (hostname === 'ats.rippling.com' || hostname === 'rippling-ats.com' || hostname.endsWith('.rippling-ats.com')) return 'rippling';
+    if (hostname === 'bamboohr.com' || hostname.endsWith('.bamboohr.com')) return 'bamboohr';
+    if (hostname === 'applytojob.com' || hostname.endsWith('.applytojob.com') || hostname === 'jazzhr.com' || hostname.endsWith('.jazzhr.com')) return 'jazzhr';
+    if (hostname === 'icims.com' || hostname.endsWith('.icims.com')) return 'icims';
+    if (hostname === 'jobvite.com' || hostname.endsWith('.jobvite.com')) return 'jobvite';
+    if (hostname === 'breezy.hr' || hostname.endsWith('.breezy.hr')) return 'breezy';
+    if (hostname === 'workable.com' || hostname.endsWith('.workable.com')) return 'workable';
+    if (hostname === 'recruitee.com' || hostname.endsWith('.recruitee.com')) return 'recruitee';
+  } catch {}
+  return null;
+}
+
 function parseMarkdownTable(content) {
   const lines = content.split('\n');
   const headers = [];
@@ -269,8 +290,9 @@ async function main() {
       const isExcluded = rawExcluded === 'yes' || rawExcluded === 'true' || rawExcluded === 'excluded';
       const notes = row['Notes'] || '';
       const lastSearched = row['Last Searched'] || row['Last Checked'] || '';
+      const atsPlatform = row['ATS Platform'] || row['ATS'] || detectAtsPlatform(careersUrl) || null;
       if (name.trim()) {
-        parsedCompanies.push({ name: name.trim(), careersUrl: careersUrl.trim(), isExcluded, notes: notes.trim(), lastSearched: lastSearched.trim() });
+        parsedCompanies.push({ name: name.trim(), careersUrl: careersUrl.trim(), atsPlatform, isExcluded, notes: notes.trim(), lastSearched: lastSearched.trim() });
       }
     }
   }
@@ -338,8 +360,9 @@ async function main() {
       const status = (row['Status'] || 'pending').toLowerCase();
       const notes = row['Notes'] || '';
       const queuedAt = row['Queued At'] || row['Added Date'] || '';
+      const atsPlatform = row['ATS Platform'] || row['ATS'] || detectAtsPlatform(url) || null;
       if (url.trim()) {
-        parsedQueue.push({ url: url.trim(), company: company.trim(), status: status.trim(), notes: notes.trim(), queuedAt: queuedAt.trim() });
+        parsedQueue.push({ url: url.trim(), company: company.trim(), atsPlatform, status: status.trim(), notes: notes.trim(), queuedAt: queuedAt.trim() });
       }
     }
   }
@@ -443,6 +466,7 @@ async function main() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
             careers_url TEXT NOT NULL,
+            ats_platform TEXT,
             is_excluded INTEGER NOT NULL DEFAULT 0,
             notes TEXT,
             last_searched_at TEXT,
@@ -485,6 +509,7 @@ async function main() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT NOT NULL UNIQUE,
             company_name TEXT NOT NULL,
+            ats_platform TEXT,
             status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'assessed', 'skipped')),
             notes TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -524,17 +549,18 @@ async function main() {
 
       // 1. Companies
       const insertCompany = db.prepare(`
-        INSERT INTO companies (name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        INSERT INTO companies (name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         ON CONFLICT (name) DO UPDATE SET
           careers_url = excluded.careers_url,
+          ats_platform = COALESCE(excluded.ats_platform, companies.ats_platform),
           is_excluded = excluded.is_excluded,
           notes = excluded.notes,
           last_searched_at = excluded.last_searched_at,
           updated_at = datetime('now')
       `);
       for (const c of parsedCompanies) {
-        insertCompany.run(c.name, c.careersUrl, c.isExcluded ? 1 : 0, c.notes || null, c.lastSearched || null);
+        insertCompany.run(c.name, c.careersUrl, c.atsPlatform || null, c.isExcluded ? 1 : 0, c.notes || null, c.lastSearched || null);
       }
 
       // 2. Title Patterns
@@ -579,16 +605,17 @@ async function main() {
 
       // 5. Crawl Queue
       const insertQueue = db.prepare(`
-        INSERT INTO crawl_queue (url, company_name, status, notes, created_at, updated_at)
-        VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))
+        INSERT INTO crawl_queue (url, company_name, ats_platform, status, notes, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         ON CONFLICT (url) DO UPDATE SET
           company_name = excluded.company_name,
+          ats_platform = COALESCE(excluded.ats_platform, crawl_queue.ats_platform),
           status = excluded.status,
           notes = excluded.notes,
           updated_at = datetime('now')
       `);
       for (const q of parsedQueue) {
-        insertQueue.run(q.url, q.company, q.status || 'pending', q.notes || null);
+        insertQueue.run(q.url, q.company, q.atsPlatform || null, q.status || 'pending', q.notes || null);
       }
 
       // 6. Candidates
@@ -764,10 +791,13 @@ async function main() {
       // 1. Companies
       for (const c of parsedCompanies) {
         await pool.query(
-          `INSERT INTO companies (name, careers_url, is_excluded, notes, updated_at)
-           VALUES ($1, $2, $3, $4, NOW())
-           ON CONFLICT (name) DO NOTHING`,
-          [c.name, c.careersUrl, c.isExcluded, c.notes]
+          `INSERT INTO companies (name, careers_url, ats_platform, is_excluded, notes, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NOW())
+           ON CONFLICT (name) DO UPDATE SET
+             careers_url = EXCLUDED.careers_url,
+             ats_platform = COALESCE(EXCLUDED.ats_platform, companies.ats_platform),
+             notes = COALESCE(EXCLUDED.notes, companies.notes)`,
+          [c.name, c.careersUrl, c.atsPlatform || null, c.isExcluded, c.notes]
         );
       }
       // 2. Title Patterns
@@ -800,10 +830,11 @@ async function main() {
       // 5. Crawl Queue
       for (const q of parsedQueue) {
         await pool.query(
-          `INSERT INTO crawl_queue (url, company_name, status, notes)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (url) DO NOTHING`,
-          [q.url, q.company, q.status, q.notes]
+          `INSERT INTO crawl_queue (url, company_name, ats_platform, status, notes)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (url) DO UPDATE SET
+             ats_platform = COALESCE(EXCLUDED.ats_platform, crawl_queue.ats_platform)`,
+          [q.url, q.company, q.atsPlatform || null, q.status, q.notes]
         );
       }
       // 6. Candidates

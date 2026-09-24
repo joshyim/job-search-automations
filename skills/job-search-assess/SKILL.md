@@ -33,7 +33,7 @@ Before processing:
 
 1. **Check for staged crawl results:** If `<selected-directory>/.job-search/tmp/<company-slug>-crawl.json` exists from a preceding crawl run, inspect or cross-reference its staged postings with the queue.
 2. **Fetch pending entries:** Call MCP tool `get_pending_queue({ company_name: "$ARGUMENTS" })`.
-   Filter to entries where status is `pending`. If no entries are returned, delete any remaining staged crawl file for this company in `<selected-directory>/.job-search/tmp/`, report "nothing to assess", and return.
+   Filter to entries where status is `pending`. Note that returned entries include `ats_platform` (e.g. `ashby`, `greenhouse`, `lever`, `workday`, `custom`, or `null`). If no entries are returned, delete any remaining staged crawl file for this company in `<selected-directory>/.job-search/tmp/`, report "nothing to assess", and return.
 3. **Enforce bounded batch limit:**
    - To keep scheduled and unattended runs bounded in time and token cost, **assess at most 5 pending postings per run** (or up to 10 if explicitly specified).
    - If more pending postings exist, process the first 5 in queue order. The remaining postings remain `pending` for the next scheduled run.
@@ -62,6 +62,20 @@ Before processing:
 ### 3. Process each posting individually
 
 For each pending posting in the bounded batch, in queue order:
+
+**Upfront ATS Platform Strategy Dispatch (PRO-66):**
+Inspect `entry.ats_platform` on the pending posting before fetching:
+- **`ats_platform === "ashby"`**:
+  - **CRITICAL**: **NEVER use `WebFetch`**. Ashby pages are JavaScript-rendered SPA shells that return empty HTML, wasting requests and risking loop detector circuit breakers.
+  - Immediately invoke `node scripts/crawl-job-board.js "<posting_url>" --posting --json` or query the unauthenticated public board API (`/posting-api/job-board/<boardSlug>`).
+  - **NEVER** call `https://api.ashbyhq.com/posting-api/job/{id}` directly (requires customer authentication and returns 401).
+- **`ats_platform === "greenhouse"` or `"lever"`**:
+  - Use `node scripts/crawl-job-board.js "<posting_url>" --posting --json` or direct public ATS API.
+- **`ats_platform === "workday"` or other ATS**:
+  - Use `node scripts/crawl-job-board.js "<posting_url>" --posting --json`.
+- **`ats_platform === "custom"` or `null`**:
+  - Use `node scripts/crawl-job-board.js "<posting_url>" --posting --json` or direct HTTP fetch.
+  - If exit code 3 (`js_required`) occurs, do not retry. Immediately mark skipped.
 
 **Validate & Fetch Posting Details:**
 - **Primary method for ATS URLs:** For Ashby, Greenhouse, or Lever postings, use the lightweight crawler in posting mode:

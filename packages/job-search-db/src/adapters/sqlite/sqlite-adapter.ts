@@ -16,6 +16,7 @@ import {
   TitlePatternType,
 } from '../types.js';
 import { DEFAULT_RUBRIC, SQLITE_SCHEMA } from './schema.js';
+import { detectAtsPlatform, normalizeAtsPlatform } from '../../ats.js';
 
 export class SqliteAdapter implements DataAdapter {
   private dbPath: string;
@@ -63,6 +64,39 @@ export class SqliteAdapter implements DataAdapter {
     // Execute schema DDL
     this.db.exec(SQLITE_SCHEMA);
 
+    // Non-destructive migration for existing tables: ensure ats_platform column exists
+    const companyCols = (this.db.prepare("PRAGMA table_info(companies)").all() as any[]).map(c => c.name);
+    if (!companyCols.includes('ats_platform')) {
+      this.db.exec("ALTER TABLE companies ADD COLUMN ats_platform TEXT;");
+    }
+    const queueCols = (this.db.prepare("PRAGMA table_info(crawl_queue)").all() as any[]).map(c => c.name);
+    if (!queueCols.includes('ats_platform')) {
+      this.db.exec("ALTER TABLE crawl_queue ADD COLUMN ats_platform TEXT;");
+    }
+
+    // Backfill rows where ats_platform IS NULL using detectAtsPlatform
+    const unpopulatedCompanies = this.db.prepare("SELECT id, careers_url FROM companies WHERE ats_platform IS NULL").all() as any[];
+    if (unpopulatedCompanies.length > 0) {
+      const updateCompanyAts = this.db.prepare("UPDATE companies SET ats_platform = ? WHERE id = ?");
+      for (const c of unpopulatedCompanies) {
+        const detected = detectAtsPlatform(c.careers_url);
+        if (detected) {
+          updateCompanyAts.run(detected, c.id);
+        }
+      }
+    }
+
+    const unpopulatedQueue = this.db.prepare("SELECT id, url FROM crawl_queue WHERE ats_platform IS NULL").all() as any[];
+    if (unpopulatedQueue.length > 0) {
+      const updateQueueAts = this.db.prepare("UPDATE crawl_queue SET ats_platform = ? WHERE id = ?");
+      for (const q of unpopulatedQueue) {
+        const detected = detectAtsPlatform(q.url);
+        if (detected) {
+          updateQueueAts.run(detected, q.id);
+        }
+      }
+    }
+
     // Seed default rubric if scoring_rubric is empty
     const countRow = this.db.prepare('SELECT COUNT(*) as count FROM scoring_rubric').get() as { count: number };
     if (countRow.count === 0) {
@@ -96,7 +130,7 @@ export class SqliteAdapter implements DataAdapter {
 
   public async listCompanies(includeExcluded = false): Promise<Company[]> {
     const db = this.getDatabase();
-    let query = 'SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies';
+    let query = 'SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies';
     if (!includeExcluded) {
       query += ' WHERE is_excluded = 0';
     }
@@ -105,6 +139,7 @@ export class SqliteAdapter implements DataAdapter {
     const rows = db.prepare(query).all() as any[];
     return rows.map((r) => ({
       ...r,
+      ats_platform: r.ats_platform ?? null,
       is_excluded: Boolean(r.is_excluded),
     }));
   }
@@ -112,43 +147,49 @@ export class SqliteAdapter implements DataAdapter {
   public async addCompany(data: {
     name: string;
     careers_url: string;
+    ats_platform?: string;
     notes?: string;
     last_searched_at?: string;
   }): Promise<Company> {
     const db = this.getDatabase();
-    const existing = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE LOWER(name) = LOWER(?)').get(data.name) as any;
+    const existing = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE LOWER(name) = LOWER(?)').get(data.name) as any;
+
+    const atsPlatform = normalizeAtsPlatform(data.ats_platform) ?? detectAtsPlatform(data.careers_url);
 
     if (existing) {
       const notes = data.notes !== undefined ? data.notes : existing.notes;
       const lastSearchedAt = data.last_searched_at !== undefined ? data.last_searched_at : existing.last_searched_at;
+      const effectiveAtsPlatform = data.ats_platform !== undefined ? atsPlatform : (existing.ats_platform ?? atsPlatform);
       const now = new Date().toISOString();
 
       db.prepare(
-        'UPDATE companies SET careers_url = ?, notes = ?, last_searched_at = ?, updated_at = ? WHERE id = ?'
-      ).run(data.careers_url, notes ?? null, lastSearchedAt ?? null, now, existing.id);
+        'UPDATE companies SET careers_url = ?, ats_platform = ?, notes = ?, last_searched_at = ?, updated_at = ? WHERE id = ?'
+      ).run(data.careers_url, effectiveAtsPlatform ?? null, notes ?? null, lastSearchedAt ?? null, now, existing.id);
 
-      const updated = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(existing.id) as any;
+      const updated = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(existing.id) as any;
       return {
         ...updated,
+        ats_platform: updated.ats_platform ?? null,
         is_excluded: Boolean(updated.is_excluded),
       };
     }
 
     const now = new Date().toISOString();
     const result = db.prepare(
-      'INSERT INTO companies (name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at) VALUES (?, ?, 0, ?, ?, ?, ?)'
-    ).run(data.name, data.careers_url, data.notes ?? null, data.last_searched_at ?? null, now, now);
+      'INSERT INTO companies (name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?, ?)'
+    ).run(data.name, data.careers_url, atsPlatform ?? null, data.notes ?? null, data.last_searched_at ?? null, now, now);
 
-    const inserted = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(result.lastInsertRowid) as any;
+    const inserted = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(result.lastInsertRowid) as any;
     return {
       ...inserted,
+      ats_platform: inserted.ats_platform ?? null,
       is_excluded: Boolean(inserted.is_excluded),
     };
   }
 
   public async updateCompany(currentName: string, updates: Partial<Company>): Promise<Company> {
     const db = this.getDatabase();
-    const existing = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE LOWER(name) = LOWER(?)').get(currentName) as any;
+    const existing = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE LOWER(name) = LOWER(?)').get(currentName) as any;
 
     if (!existing) {
       throw new Error(`Company not found: ${currentName}`);
@@ -156,25 +197,32 @@ export class SqliteAdapter implements DataAdapter {
 
     const name = updates.name !== undefined ? updates.name : existing.name;
     const careersUrl = updates.careers_url !== undefined ? updates.careers_url : existing.careers_url;
+    let atsPlatform = existing.ats_platform;
+    if (updates.ats_platform !== undefined) {
+      atsPlatform = normalizeAtsPlatform(updates.ats_platform);
+    } else if (updates.careers_url !== undefined && updates.careers_url !== existing.careers_url) {
+      atsPlatform = detectAtsPlatform(updates.careers_url) ?? atsPlatform;
+    }
     const isExcluded = updates.is_excluded !== undefined ? (updates.is_excluded ? 1 : 0) : existing.is_excluded;
     const notes = updates.notes !== undefined ? updates.notes : existing.notes;
     const lastSearchedAt = updates.last_searched_at !== undefined ? updates.last_searched_at : existing.last_searched_at;
     const now = new Date().toISOString();
 
     db.prepare(
-      'UPDATE companies SET name = ?, careers_url = ?, is_excluded = ?, notes = ?, last_searched_at = ?, updated_at = ? WHERE id = ?'
-    ).run(name, careersUrl, isExcluded, notes ?? null, lastSearchedAt ?? null, now, existing.id);
+      'UPDATE companies SET name = ?, careers_url = ?, ats_platform = ?, is_excluded = ?, notes = ?, last_searched_at = ?, updated_at = ? WHERE id = ?'
+    ).run(name, careersUrl, atsPlatform ?? null, isExcluded, notes ?? null, lastSearchedAt ?? null, now, existing.id);
 
-    const updated = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(existing.id) as any;
+    const updated = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(existing.id) as any;
     return {
       ...updated,
+      ats_platform: updated.ats_platform ?? null,
       is_excluded: Boolean(updated.is_excluded),
     };
   }
 
   public async excludeCompany(name: string, reason?: string): Promise<Company> {
     const db = this.getDatabase();
-    const existing = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE LOWER(name) = LOWER(?)').get(name) as any;
+    const existing = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE LOWER(name) = LOWER(?)').get(name) as any;
 
     if (!existing) {
       throw new Error(`Company not found: ${name}`);
@@ -190,9 +238,10 @@ export class SqliteAdapter implements DataAdapter {
       'UPDATE companies SET is_excluded = 1, notes = ?, updated_at = ? WHERE id = ?'
     ).run(combinedNotes, now, existing.id);
 
-    const updated = db.prepare('SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(existing.id) as any;
+    const updated = db.prepare('SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at FROM companies WHERE id = ?').get(existing.id) as any;
     return {
       ...updated,
+      ats_platform: updated.ats_platform ?? null,
       is_excluded: true,
     };
   }
@@ -201,7 +250,7 @@ export class SqliteAdapter implements DataAdapter {
     const db = this.getDatabase();
     // Prioritize companies where last_searched_at is NULL, then oldest last_searched_at
     const query = `
-      SELECT id, name, careers_url, is_excluded, notes, last_searched_at, created_at, updated_at
+      SELECT id, name, careers_url, ats_platform, is_excluded, notes, last_searched_at, created_at, updated_at
       FROM companies
       WHERE is_excluded = 0
       ORDER BY (last_searched_at IS NOT NULL) ASC, last_searched_at ASC, id ASC
@@ -438,36 +487,50 @@ export class SqliteAdapter implements DataAdapter {
 
   public async checkUrlExists(url: string): Promise<{ exists: boolean; entry?: QueueEntry }> {
     const db = this.getDatabase();
-    const row = (db.prepare('SELECT id, url, company_name, status, notes, created_at, updated_at FROM crawl_queue WHERE LOWER(url) = LOWER(?)').get(url) as unknown) as QueueEntry | undefined;
+    const row = (db.prepare('SELECT id, url, company_name, ats_platform, status, notes, created_at, updated_at FROM crawl_queue WHERE LOWER(url) = LOWER(?)').get(url) as unknown) as QueueEntry | undefined;
     return {
       exists: Boolean(row),
-      entry: row,
+      entry: row ? { ...row, ats_platform: row.ats_platform ?? null } : undefined,
     };
   }
 
   public async addToQueue(data: {
     url: string;
     company_name: string;
+    ats_platform?: string;
     notes?: string;
   }): Promise<QueueEntry> {
     const db = this.getDatabase();
-    const existing = (db.prepare('SELECT id, url, company_name, status, notes, created_at, updated_at FROM crawl_queue WHERE LOWER(url) = LOWER(?)').get(data.url) as unknown) as QueueEntry | undefined;
+    const existing = (db.prepare('SELECT id, url, company_name, ats_platform, status, notes, created_at, updated_at FROM crawl_queue WHERE LOWER(url) = LOWER(?)').get(data.url) as unknown) as QueueEntry | undefined;
+
+    const atsPlatform = normalizeAtsPlatform(data.ats_platform) ?? detectAtsPlatform(data.url);
 
     if (existing) {
-      return existing;
+      if (!existing.ats_platform && atsPlatform && existing.id !== undefined) {
+        db.prepare('UPDATE crawl_queue SET ats_platform = ? WHERE id = ?').run(atsPlatform, existing.id);
+        existing.ats_platform = atsPlatform;
+      }
+      return {
+        ...existing,
+        ats_platform: existing.ats_platform ?? null,
+      };
     }
 
     const now = new Date().toISOString();
     const result = db.prepare(
-      'INSERT INTO crawl_queue (url, company_name, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(data.url, data.company_name, 'pending', data.notes ?? null, now, now);
+      'INSERT INTO crawl_queue (url, company_name, ats_platform, status, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(data.url, data.company_name, atsPlatform ?? null, 'pending', data.notes ?? null, now, now);
 
-    return (db.prepare('SELECT id, url, company_name, status, notes, created_at, updated_at FROM crawl_queue WHERE id = ?').get(result.lastInsertRowid) as unknown) as QueueEntry;
+    const inserted = (db.prepare('SELECT id, url, company_name, ats_platform, status, notes, created_at, updated_at FROM crawl_queue WHERE id = ?').get(result.lastInsertRowid) as unknown) as QueueEntry;
+    return {
+      ...inserted,
+      ats_platform: inserted.ats_platform ?? null,
+    };
   }
 
   public async getPendingQueue(companyName?: string, limit = 50): Promise<QueueEntry[]> {
     const db = this.getDatabase();
-    let query = "SELECT id, url, company_name, status, notes, created_at, updated_at FROM crawl_queue WHERE status = 'pending'";
+    let query = "SELECT id, url, company_name, ats_platform, status, notes, created_at, updated_at FROM crawl_queue WHERE status = 'pending'";
     const params: any[] = [];
     if (companyName) {
       query += ' AND LOWER(company_name) = LOWER(?)';
@@ -476,16 +539,21 @@ export class SqliteAdapter implements DataAdapter {
     query += ' ORDER BY id ASC LIMIT ?';
     params.push(limit);
 
-    return (db.prepare(query).all(...params) as unknown) as QueueEntry[];
+    const rows = db.prepare(query).all(...params) as any[];
+    return rows.map(r => ({
+      ...r,
+      ats_platform: r.ats_platform ?? null,
+    })) as QueueEntry[];
   }
 
   public async listQueue(filters?: {
     status?: QueueStatus;
     company_name?: string;
+    ats_platform?: string;
     limit?: number;
   }): Promise<QueueEntry[]> {
     const db = this.getDatabase();
-    let query = 'SELECT id, url, company_name, status, notes, created_at, updated_at FROM crawl_queue';
+    let query = 'SELECT id, url, company_name, ats_platform, status, notes, created_at, updated_at FROM crawl_queue';
     const conditions: string[] = [];
     const params: any[] = [];
 
@@ -497,6 +565,10 @@ export class SqliteAdapter implements DataAdapter {
       conditions.push('LOWER(company_name) = LOWER(?)');
       params.push(filters.company_name);
     }
+    if (filters?.ats_platform) {
+      conditions.push('LOWER(ats_platform) = LOWER(?)');
+      params.push(filters.ats_platform);
+    }
 
     if (conditions.length > 0) {
       query += ` WHERE ${conditions.join(' AND ')}`;
@@ -507,7 +579,11 @@ export class SqliteAdapter implements DataAdapter {
       params.push(filters.limit);
     }
 
-    return (db.prepare(query).all(...params) as unknown) as QueueEntry[];
+    const rows = db.prepare(query).all(...params) as any[];
+    return rows.map(r => ({
+      ...r,
+      ats_platform: r.ats_platform ?? null,
+    })) as QueueEntry[];
   }
 
   public async updateQueueStatus(
@@ -532,7 +608,11 @@ export class SqliteAdapter implements DataAdapter {
       existing.id
     );
 
-    return (db.prepare('SELECT id, url, company_name, status, notes, created_at, updated_at FROM crawl_queue WHERE id = ?').get(existing.id) as unknown) as QueueEntry;
+    const updated = (db.prepare('SELECT id, url, company_name, ats_platform, status, notes, created_at, updated_at FROM crawl_queue WHERE id = ?').get(existing.id) as unknown) as QueueEntry;
+    return {
+      ...updated,
+      ats_platform: updated.ats_platform ?? null,
+    };
   }
 
   // --- Candidates ---

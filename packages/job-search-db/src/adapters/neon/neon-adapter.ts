@@ -13,6 +13,7 @@ import {
   TitlePattern,
   TitlePatternType,
 } from '../types.js';
+import { detectAtsPlatform, normalizeAtsPlatform } from '../../ats.js';
 
 export interface NeonClientConfig {
   connectionString: string;
@@ -36,6 +37,12 @@ export class NeonAdapter implements DataAdapter {
   public async initialize(): Promise<void> {
     // Verify connection
     await this.pool.query('SELECT 1');
+
+    // Ensure ats_platform columns exist
+    await this.pool.query(`
+      ALTER TABLE companies ADD COLUMN IF NOT EXISTS ats_platform VARCHAR(50);
+      ALTER TABLE crawl_queue ADD COLUMN IF NOT EXISTS ats_platform VARCHAR(50);
+    `);
   }
 
   public async close(): Promise<void> {
@@ -46,7 +53,7 @@ export class NeonAdapter implements DataAdapter {
 
   public async listCompanies(includeExcluded = false): Promise<Company[]> {
     let query = `
-      SELECT id, name, careers_url, is_excluded, notes,
+      SELECT id, name, careers_url, ats_platform, is_excluded, notes,
              last_searched_at::text as last_searched_at,
              created_at::text as created_at,
              updated_at::text as updated_at
@@ -64,6 +71,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       name: r.name,
       careers_url: r.careers_url,
+      ats_platform: r.ats_platform || null,
       is_excluded: Boolean(r.is_excluded),
       notes: r.notes || null,
       last_searched_at: r.last_searched_at || null,
@@ -72,16 +80,18 @@ export class NeonAdapter implements DataAdapter {
     }));
   }
 
-  public async addCompany(data: { name: string; careers_url: string; notes?: string; last_searched_at?: string }): Promise<Company> {
+  public async addCompany(data: { name: string; careers_url: string; ats_platform?: string; notes?: string; last_searched_at?: string }): Promise<Company> {
+    const atsPlatform = normalizeAtsPlatform(data.ats_platform) ?? detectAtsPlatform(data.careers_url);
     const query = `
-      INSERT INTO companies (name, careers_url, is_excluded, notes, last_searched_at, updated_at)
-      VALUES ($1, $2, FALSE, $3, $4, NOW())
+      INSERT INTO companies (name, careers_url, ats_platform, is_excluded, notes, last_searched_at, updated_at)
+      VALUES ($1, $2, $3, FALSE, $4, $5, NOW())
       ON CONFLICT (name) DO UPDATE
       SET careers_url = EXCLUDED.careers_url,
+          ats_platform = COALESCE(EXCLUDED.ats_platform, companies.ats_platform),
           notes = COALESCE(EXCLUDED.notes, companies.notes),
           last_searched_at = COALESCE(EXCLUDED.last_searched_at, companies.last_searched_at),
           updated_at = NOW()
-      RETURNING id, name, careers_url, is_excluded, notes,
+      RETURNING id, name, careers_url, ats_platform, is_excluded, notes,
                 last_searched_at::text as last_searched_at,
                 created_at::text as created_at,
                 updated_at::text as updated_at
@@ -89,6 +99,7 @@ export class NeonAdapter implements DataAdapter {
     const result = await this.pool.query(query, [
       data.name,
       data.careers_url,
+      atsPlatform || null,
       data.notes || null,
       data.last_searched_at || null,
     ]);
@@ -97,6 +108,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       name: r.name,
       careers_url: r.careers_url,
+      ats_platform: r.ats_platform || null,
       is_excluded: Boolean(r.is_excluded),
       notes: r.notes || null,
       last_searched_at: r.last_searched_at || null,
@@ -117,6 +129,16 @@ export class NeonAdapter implements DataAdapter {
     if (updates.careers_url !== undefined) {
       fields.push(`careers_url = $${idx++}`);
       values.push(updates.careers_url);
+    }
+    if (updates.ats_platform !== undefined) {
+      fields.push(`ats_platform = $${idx++}`);
+      values.push(normalizeAtsPlatform(updates.ats_platform));
+    } else if (updates.careers_url !== undefined) {
+      const detected = detectAtsPlatform(updates.careers_url);
+      if (detected) {
+        fields.push(`ats_platform = $${idx++}`);
+        values.push(detected);
+      }
     }
     if (updates.is_excluded !== undefined) {
       fields.push(`is_excluded = $${idx++}`);
@@ -139,6 +161,7 @@ export class NeonAdapter implements DataAdapter {
         id: r.id,
         name: r.name,
         careers_url: r.careers_url,
+        ats_platform: r.ats_platform || null,
         is_excluded: Boolean(r.is_excluded),
         notes: r.notes || null,
         last_searched_at: r.last_searched_at || null,
@@ -153,7 +176,7 @@ export class NeonAdapter implements DataAdapter {
       UPDATE companies
       SET ${fields.join(', ')}
       WHERE LOWER(name) = LOWER($${idx})
-      RETURNING id, name, careers_url, is_excluded, notes,
+      RETURNING id, name, careers_url, ats_platform, is_excluded, notes,
                 last_searched_at::text as last_searched_at,
                 created_at::text as created_at,
                 updated_at::text as updated_at
@@ -167,6 +190,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       name: r.name,
       careers_url: r.careers_url,
+      ats_platform: r.ats_platform || null,
       is_excluded: Boolean(r.is_excluded),
       notes: r.notes || null,
       last_searched_at: r.last_searched_at || null,
@@ -187,7 +211,7 @@ export class NeonAdapter implements DataAdapter {
             ELSE companies.notes
           END,
           updated_at = NOW()
-      RETURNING id, name, careers_url, is_excluded, notes,
+      RETURNING id, name, careers_url, ats_platform, is_excluded, notes,
                 last_searched_at::text as last_searched_at,
                 created_at::text as created_at,
                 updated_at::text as updated_at
@@ -198,6 +222,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       name: r.name,
       careers_url: r.careers_url,
+      ats_platform: r.ats_platform || null,
       is_excluded: Boolean(r.is_excluded),
       notes: r.notes || null,
       last_searched_at: r.last_searched_at || null,
@@ -208,7 +233,7 @@ export class NeonAdapter implements DataAdapter {
 
   public async getBatch(limit: number): Promise<Company[]> {
     const query = `
-      SELECT id, name, careers_url, is_excluded, notes,
+      SELECT id, name, careers_url, ats_platform, is_excluded, notes,
              last_searched_at::text as last_searched_at,
              created_at::text as created_at,
              updated_at::text as updated_at
@@ -234,6 +259,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       name: r.name,
       careers_url: r.careers_url,
+      ats_platform: r.ats_platform || null,
       is_excluded: Boolean(r.is_excluded),
       notes: r.notes || null,
       last_searched_at: r.last_searched_at || null,
@@ -602,7 +628,7 @@ export class NeonAdapter implements DataAdapter {
 
   public async checkUrlExists(url: string): Promise<{ exists: boolean; entry?: QueueEntry }> {
     const query = `
-      SELECT id, url, company_name, status, notes,
+      SELECT id, url, company_name, ats_platform, status, notes,
              created_at::text as created_at,
              updated_at::text as updated_at
       FROM crawl_queue
@@ -619,6 +645,7 @@ export class NeonAdapter implements DataAdapter {
         id: r.id,
         url: r.url,
         company_name: r.company_name,
+        ats_platform: r.ats_platform || null,
         status: r.status as QueueStatus,
         notes: r.notes || null,
         created_at: r.created_at,
@@ -627,24 +654,27 @@ export class NeonAdapter implements DataAdapter {
     };
   }
 
-  public async addToQueue(data: { url: string; company_name: string; notes?: string }): Promise<QueueEntry> {
+  public async addToQueue(data: { url: string; company_name: string; ats_platform?: string; notes?: string }): Promise<QueueEntry> {
+    const atsPlatform = normalizeAtsPlatform(data.ats_platform) ?? detectAtsPlatform(data.url);
     const query = `
-      INSERT INTO crawl_queue (url, company_name, status, notes, updated_at)
-      VALUES ($1, $2, 'pending', $3, NOW())
+      INSERT INTO crawl_queue (url, company_name, ats_platform, status, notes, updated_at)
+      VALUES ($1, $2, $3, 'pending', $4, NOW())
       ON CONFLICT (url) DO UPDATE
       SET company_name = EXCLUDED.company_name,
+          ats_platform = COALESCE(EXCLUDED.ats_platform, crawl_queue.ats_platform),
           notes = COALESCE(EXCLUDED.notes, crawl_queue.notes),
           updated_at = NOW()
-      RETURNING id, url, company_name, status, notes,
+      RETURNING id, url, company_name, ats_platform, status, notes,
                 created_at::text as created_at,
                 updated_at::text as updated_at
     `;
-    const result = await this.pool.query(query, [data.url, data.company_name, data.notes || null]);
+    const result = await this.pool.query(query, [data.url, data.company_name, atsPlatform || null, data.notes || null]);
     const r = result.rows[0];
     return {
       id: r.id,
       url: r.url,
       company_name: r.company_name,
+      ats_platform: r.ats_platform || null,
       status: r.status as QueueStatus,
       notes: r.notes || null,
       created_at: r.created_at,
@@ -654,7 +684,7 @@ export class NeonAdapter implements DataAdapter {
 
   public async getPendingQueue(companyName?: string, limit?: number): Promise<QueueEntry[]> {
     let query = `
-      SELECT id, url, company_name, status, notes,
+      SELECT id, url, company_name, ats_platform, status, notes,
              created_at::text as created_at,
              updated_at::text as updated_at
       FROM crawl_queue
@@ -678,6 +708,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       url: r.url,
       company_name: r.company_name,
+      ats_platform: r.ats_platform || null,
       status: r.status as QueueStatus,
       notes: r.notes || null,
       created_at: r.created_at,
@@ -685,9 +716,9 @@ export class NeonAdapter implements DataAdapter {
     }));
   }
 
-  public async listQueue(filters?: { status?: QueueStatus; company_name?: string; limit?: number }): Promise<QueueEntry[]> {
+  public async listQueue(filters?: { status?: QueueStatus; company_name?: string; ats_platform?: string; limit?: number }): Promise<QueueEntry[]> {
     let query = `
-      SELECT id, url, company_name, status, notes,
+      SELECT id, url, company_name, ats_platform, status, notes,
              created_at::text as created_at,
              updated_at::text as updated_at
       FROM crawl_queue
@@ -704,6 +735,10 @@ export class NeonAdapter implements DataAdapter {
       whereClauses.push(`LOWER(company_name) = LOWER($${paramIndex++})`);
       params.push(filters.company_name);
     }
+    if (filters?.ats_platform) {
+      whereClauses.push(`LOWER(ats_platform) = LOWER($${paramIndex++})`);
+      params.push(filters.ats_platform);
+    }
     if (whereClauses.length > 0) {
       query += ` WHERE ${whereClauses.join(' AND ')}`;
     }
@@ -718,6 +753,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       url: r.url,
       company_name: r.company_name,
+      ats_platform: r.ats_platform || null,
       status: r.status as QueueStatus,
       notes: r.notes || null,
       created_at: r.created_at,
@@ -732,7 +768,7 @@ export class NeonAdapter implements DataAdapter {
           notes = COALESCE($3, notes),
           updated_at = NOW()
       WHERE url = $1
-      RETURNING id, url, company_name, status, notes,
+      RETURNING id, url, company_name, ats_platform, status, notes,
                 created_at::text as created_at,
                 updated_at::text as updated_at
     `;
@@ -745,6 +781,7 @@ export class NeonAdapter implements DataAdapter {
       id: r.id,
       url: r.url,
       company_name: r.company_name,
+      ats_platform: r.ats_platform || null,
       status: r.status as QueueStatus,
       notes: r.notes || null,
       created_at: r.created_at,

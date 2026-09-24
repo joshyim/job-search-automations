@@ -39,8 +39,8 @@
 //   title\turl
 //
 // Output (JSON):
-//   [{"title": "...", "url": "..."}, ...]
-//   or {"title": "...", "company": "...", "description": "...", ...} in --posting mode
+//   [{"title": "...", "url": "...", "ats_platform": "..."}, ...]
+//   or {"title": "...", "company": "...", "ats_platform": "...", "description": "...", ...} in --posting mode
 //
 // Exit codes:
 //   0  Success
@@ -542,6 +542,65 @@ function cleanText(html) {
 }
 
 /**
+ * Detect ATS platform type from URL patterns.
+ * Returns normalized ATS platform name or null.
+ */
+function detectAtsPlatform(url) {
+  if (!url || typeof url !== "string") return null;
+  let parsed;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  if (host === "ashbyhq.com" || host.endsWith(".ashbyhq.com")) return "ashby";
+  if (
+    host === "greenhouse.io" ||
+    host.endsWith(".greenhouse.io") ||
+    host === "grnh.se" ||
+    host.endsWith(".grnh.se")
+  ) {
+    return "greenhouse";
+  }
+  if (host === "lever.co" || host.endsWith(".lever.co")) return "lever";
+  if (
+    host === "myworkdayjobs.com" ||
+    host.endsWith(".myworkdayjobs.com") ||
+    host === "workday.com" ||
+    host.endsWith(".workday.com")
+  ) {
+    return "workday";
+  }
+  if (host === "smartrecruiters.com" || host.endsWith(".smartrecruiters.com")) {
+    return "smartrecruiters";
+  }
+  if (
+    host === "rippling.com" ||
+    host.endsWith(".rippling.com") ||
+    host === "rippling-ats.com" ||
+    host.endsWith(".rippling-ats.com")
+  ) {
+    return "rippling";
+  }
+  if (host === "bamboohr.com" || host.endsWith(".bamboohr.com")) return "bamboohr";
+  if (
+    host === "applytojob.com" ||
+    host.endsWith(".applytojob.com") ||
+    host === "jazzhr.com" ||
+    host.endsWith(".jazzhr.com")
+  ) {
+    return "jazzhr";
+  }
+  if (host === "icims.com" || host.endsWith(".icims.com")) return "icims";
+  if (host === "jobvite.com" || host.endsWith(".jobvite.com")) return "jobvite";
+  if (host === "breezy.hr" || host.endsWith(".breezy.hr")) return "breezy";
+  if (host === "workable.com" || host.endsWith(".workable.com")) return "workable";
+  if (host === "recruitee.com" || host.endsWith(".recruitee.com")) return "recruitee";
+  return null;
+}
+
+/**
  * Attempt direct crawl via Greenhouse public API using parsed hostname.
  */
 async function crawlGreenhouse(parsedUrl, options = {}) {
@@ -579,6 +638,7 @@ async function crawlGreenhouse(parsedUrl, options = {}) {
       url:
         job.absolute_url ||
         `https://boards.greenhouse.io/${boardToken}/jobs/${job.id}`,
+      ats_platform: "greenhouse",
     }));
   } catch (err) {
     if (
@@ -623,6 +683,7 @@ async function crawlLever(parsedUrl, options = {}) {
     return sliced.map((job) => ({
       title: (job.text || job.title || "").trim(),
       url: job.hostedUrl || `https://jobs.lever.co/${boardToken}/${job.id}`,
+      ats_platform: "lever",
     }));
   } catch (err) {
     if (
@@ -667,6 +728,7 @@ async function crawlAshby(parsedUrl, options = {}) {
     return jobs.map((job) => ({
       title: job.title.trim(),
       url: job.jobUrl || `https://jobs.ashbyhq.com/${boardToken}/${job.id}`,
+      ats_platform: "ashby",
     }));
   } catch (err) {
     if (
@@ -724,6 +786,7 @@ async function fetchAshbyPosting(parsedUrl, options = {}) {
     return {
       title: job.title ? job.title.trim() : "",
       company: boardToken,
+      ats_platform: "ashby",
       description: desc,
       location: loc,
       url: job.jobUrl || parsedUrl.href,
@@ -778,6 +841,7 @@ async function fetchGreenhousePosting(parsedUrl, options = {}) {
     return {
       title: job.title.trim(),
       company: boardToken,
+      ats_platform: "greenhouse",
       description: desc,
       location: loc,
       url: job.absolute_url || parsedUrl.href,
@@ -829,6 +893,7 @@ async function fetchLeverPosting(parsedUrl, options = {}) {
     return {
       title: job.text.trim(),
       company: company,
+      ats_platform: "lever",
       description: desc,
       location: loc,
       url: job.hostedUrl || parsedUrl.href,
@@ -968,6 +1033,7 @@ async function fetchHtmlPosting(url, options = {}) {
       return {
         title: extractTitle(html) || "Job Posting",
         company: new URL(url).hostname,
+        ats_platform: detectAtsPlatform(url) || "custom",
         description: snapshot,
         location: "",
         url: url,
@@ -997,6 +1063,7 @@ async function fetchHtmlPosting(url, options = {}) {
   return {
     title: title,
     company: new URL(url).hostname,
+    ats_platform: detectAtsPlatform(url) || "custom",
     description: desc,
     location: "",
     url: url,
@@ -1064,6 +1131,10 @@ async function fetchPosting(targetUrl, options = {}) {
   // 2. Generic HTTP fetch if not ATS or ATS returned null
   if (!posting) {
     posting = await fetchHtmlPosting(targetUrl, options);
+  }
+
+  if (posting && !posting.ats_platform) {
+    posting.ats_platform = detectAtsPlatform(targetUrl) || "custom";
   }
 
   return posting;
@@ -1158,7 +1229,11 @@ async function crawlHtml(url, options = {}) {
     if (skipPatterns.test(cleanAbsoluteUrl)) continue;
 
     seen.add(cleanAbsoluteUrl);
-    results.push({ title: text, url: cleanAbsoluteUrl });
+    results.push({
+      title: text,
+      url: cleanAbsoluteUrl,
+      ats_platform: detectAtsPlatform(cleanAbsoluteUrl) || "custom",
+    });
   }
 
   return results;

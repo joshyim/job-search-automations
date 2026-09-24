@@ -87,7 +87,7 @@ describe('NeonAdapter', () => {
       expect(company.name).toBe('Stripe');
       expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('ON CONFLICT (name) DO UPDATE'),
-        ['Stripe', 'https://stripe.com/jobs', 'Fintech', null]
+        ['Stripe', 'https://stripe.com/jobs', null, 'Fintech', null]
       );
     });
 

@@ -15,6 +15,7 @@ import {
   TitlePatternType,
 } from '../types.js';
 import { MarkdownTableParser } from './markdown-parser.js';
+import { detectAtsPlatform, normalizeAtsPlatform } from '../../ats.js';
 
 export class LocalAdapter implements DataAdapter {
   private workflowDataPath: string;
@@ -97,6 +98,7 @@ export class LocalAdapter implements DataAdapter {
     const companies: Company[] = table.rows.map(row => ({
       name: row['Company'] || '',
       careers_url: row['Careers URL'] || '',
+      ats_platform: row['ATS Platform'] || detectAtsPlatform(row['Careers URL']) || null,
       is_excluded: (row['Excluded'] || '').toLowerCase() === 'yes' || (row['Excluded'] || '').toLowerCase() === 'true',
       notes: row['Notes'] || null,
       last_searched_at: row['Last Searched'] || null,
@@ -108,18 +110,21 @@ export class LocalAdapter implements DataAdapter {
     return companies;
   }
 
-  public async addCompany(data: { name: string; careers_url: string; notes?: string; last_searched_at?: string }): Promise<Company> {
+  public async addCompany(data: { name: string; careers_url: string; ats_platform?: string; notes?: string; last_searched_at?: string }): Promise<Company> {
     const content = this.readFile('target-companies.md');
-    const headers = ['Company', 'Careers URL', 'Excluded', 'Notes', 'Last Searched'];
     const table = MarkdownTableParser.parseTable(content);
+    const headers = table.headers.length > 0 ? table.headers : ['Company', 'Careers URL', 'Excluded', 'Notes', 'Last Searched'];
     
     let existingIndex = table.rows.findIndex(
       r => (r['Company'] || '').toLowerCase() === data.name.toLowerCase()
     );
 
+    const atsPlatform = normalizeAtsPlatform(data.ats_platform) ?? detectAtsPlatform(data.careers_url);
+
     const updatedCompany: Company = {
       name: data.name,
       careers_url: data.careers_url,
+      ats_platform: atsPlatform,
       is_excluded: false,
       notes: data.notes || null,
       last_searched_at: data.last_searched_at !== undefined
@@ -134,6 +139,10 @@ export class LocalAdapter implements DataAdapter {
       'Notes': updatedCompany.notes || '',
       'Last Searched': updatedCompany.last_searched_at || '',
     };
+    if (headers.includes('ATS Platform') || data.ats_platform) {
+      if (!headers.includes('ATS Platform')) headers.splice(2, 0, 'ATS Platform');
+      newRowRecord['ATS Platform'] = updatedCompany.ats_platform || '';
+    }
 
     if (existingIndex >= 0) {
       table.rows[existingIndex] = newRowRecord;
@@ -584,6 +593,7 @@ export class LocalAdapter implements DataAdapter {
       entry: {
         url: row['URL'],
         company_name: row['Company'] || '',
+        ats_platform: row['ATS Platform'] || detectAtsPlatform(row['URL']) || null,
         status: (row['Status'] || 'pending') as QueueStatus,
         notes: row['Notes'] || null,
         created_at: row['Queued At'] || undefined,
@@ -591,17 +601,19 @@ export class LocalAdapter implements DataAdapter {
     };
   }
 
-  public async addToQueue(data: { url: string; company_name: string; notes?: string }): Promise<QueueEntry> {
+  public async addToQueue(data: { url: string; company_name: string; ats_platform?: string; notes?: string }): Promise<QueueEntry> {
     const content = this.readFile('crawl-queue.md');
-    const headers = ['URL', 'Company', 'Status', 'Notes', 'Queued At'];
     const table = MarkdownTableParser.parseTable(content);
+    const headers = table.headers.length > 0 ? table.headers : ['URL', 'Company', 'Status', 'Notes', 'Queued At'];
 
     const existingIdx = table.rows.findIndex(r => (r['URL'] || '').trim() === data.url.trim());
     const nowIso = new Date().toISOString();
+    const atsPlatform = normalizeAtsPlatform(data.ats_platform) ?? detectAtsPlatform(data.url);
 
     const entry: QueueEntry = {
       url: data.url,
       company_name: data.company_name,
+      ats_platform: atsPlatform,
       status: 'pending',
       notes: data.notes || null,
       created_at: existingIdx >= 0 ? table.rows[existingIdx]['Queued At'] : nowIso,
@@ -614,6 +626,10 @@ export class LocalAdapter implements DataAdapter {
       'Notes': entry.notes || '',
       'Queued At': entry.created_at || nowIso,
     };
+    if (headers.includes('ATS Platform') || data.ats_platform) {
+      if (!headers.includes('ATS Platform')) headers.splice(2, 0, 'ATS Platform');
+      rowRecord['ATS Platform'] = entry.ats_platform || '';
+    }
 
     if (existingIdx >= 0) {
       table.rows[existingIdx] = rowRecord;
@@ -636,6 +652,7 @@ export class LocalAdapter implements DataAdapter {
       .map(r => ({
         url: r['URL'] || '',
         company_name: r['Company'] || '',
+        ats_platform: r['ATS Platform'] || detectAtsPlatform(r['URL']) || null,
         status: 'pending' as QueueStatus,
         notes: r['Notes'] || null,
         created_at: r['Queued At'] || undefined,
@@ -651,13 +668,14 @@ export class LocalAdapter implements DataAdapter {
     return entries;
   }
 
-  public async listQueue(filters?: { status?: QueueStatus; company_name?: string; limit?: number }): Promise<QueueEntry[]> {
+  public async listQueue(filters?: { status?: QueueStatus; company_name?: string; ats_platform?: string; limit?: number }): Promise<QueueEntry[]> {
     const content = this.readFile('crawl-queue.md');
     const table = MarkdownTableParser.parseTable(content);
 
     let entries: QueueEntry[] = table.rows.map(r => ({
       url: r['URL'] || '',
       company_name: r['Company'] || '',
+      ats_platform: r['ATS Platform'] || detectAtsPlatform(r['URL']) || null,
       status: ((r['Status'] || 'pending').toLowerCase() as QueueStatus),
       notes: r['Notes'] || null,
       created_at: r['Queued At'] || undefined,
@@ -669,6 +687,9 @@ export class LocalAdapter implements DataAdapter {
     if (filters?.company_name) {
       entries = entries.filter(e => e.company_name.toLowerCase() === filters.company_name!.toLowerCase());
     }
+    if (filters?.ats_platform) {
+      entries = entries.filter(e => (e.ats_platform || '').toLowerCase() === filters.ats_platform!.toLowerCase());
+    }
     if (filters?.limit && filters.limit > 0) {
       entries = entries.slice(0, filters.limit);
     }
@@ -677,8 +698,8 @@ export class LocalAdapter implements DataAdapter {
 
   public async updateQueueStatus(url: string, status: QueueStatus, notes?: string): Promise<QueueEntry> {
     const content = this.readFile('crawl-queue.md');
-    const headers = ['URL', 'Company', 'Status', 'Notes', 'Queued At'];
     const table = MarkdownTableParser.parseTable(content);
+    const headers = table.headers.length > 0 ? table.headers : ['URL', 'Company', 'Status', 'Notes', 'Queued At'];
 
     const idx = table.rows.findIndex(r => (r['URL'] || '').trim() === url.trim());
     if (idx < 0) {
@@ -696,7 +717,8 @@ export class LocalAdapter implements DataAdapter {
 
     return {
       url: row['URL'],
-      company_name: row['Company'],
+      company_name: row['Company'] || '',
+      ats_platform: row['ATS Platform'] || detectAtsPlatform(row['URL']) || null,
       status,
       notes: row['Notes'] || null,
       created_at: row['Queued At'] || undefined,

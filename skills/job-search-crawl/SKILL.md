@@ -110,6 +110,14 @@ node scripts/crawl-job-board.js "<job-board-url>" --json
 - **NEVER use interactive browser tools** (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended or scheduled crawls.
 - Fast failure: If a company careers board is unreachable or yields no matching postings, log the result and advance to the next company immediately. Do not explore alternative sub-pages or retry in loops.
 
+**Upfront ATS Platform Checking & Strategy Selection (PRO-66):**
+Inspect the company's pre-tagged `ats_platform` (from `get_batch` or `list_companies`, or detect via URL) before attempting fetch:
+- **`ashby`**: **NEVER use `WebFetch`** (Ashby returns an empty JS SPA shell and wastes requests). Immediately use the unauthenticated public board API (`https://api.ashbyhq.com/posting-api/job-board/<boardSlug>`) or run `node scripts/crawl-job-board.js "<careers_url>" --json`. Never call `/posting-api/job/{id}`.
+- **`greenhouse`**: Direct fetch (server-rendered HTML) or Greenhouse public API (`https://boards-api.greenhouse.io/v1/boards/<boardToken>/jobs`) or `scripts/crawl-job-board.js`.
+- **`lever`**: Direct fetch or Lever public API (`https://api.lever.co/v0/postings/<boardToken>?mode=json`) or `scripts/crawl-job-board.js`.
+- **`workday` / `smartrecruiters` / other ATS**: Run `node scripts/crawl-job-board.js "<careers_url>" --json`.
+- **`custom` / undetermined**: Run `node scripts/crawl-job-board.js "<careers_url>" --json`. If exit code 3 (`js_required`), fast-fail immediately without retry. If 0 listings, at most 1 targeted search fallback.
+
 **Known ATS-Specific Public API Patterns:**
 When encountering major ATS-hosted company boards or resolving postings, prefer lightweight direct ATS endpoints or the crawler script (`scripts/crawl-job-board.js`):
 - **Ashby** (`jobs.ashbyhq.com/<boardSlug>` or `<boardSlug>.ashbyhq.com`):
@@ -136,11 +144,12 @@ When encountering major ATS-hosted company boards or resolving postings, prefer 
 
 ### 3. Append to crawl queue via MCP
 
-For each matched, non-duplicate posting, append it to the crawl queue via MCP tool `add_to_queue`:
+For each matched, non-duplicate posting, append it to the crawl queue via MCP tool `add_to_queue` (passing `ats_platform` from the crawler output or detected from posting URL):
 ```json
 {
   "url": "<posting_url>",
   "company_name": "<company_name>",
+  "ats_platform": "<ats_platform>",
   "notes": "Matched title pattern: <matched_pattern> | Source: crawl/websearch"
 }
 ```

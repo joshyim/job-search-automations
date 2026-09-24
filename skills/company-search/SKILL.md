@@ -81,11 +81,12 @@ Only add a company if:
 3. It is not already in the target companies list from `list_companies`.
 4. A valid careers page URL was identified.
 
-Call MCP tool `add_company`:
+Call MCP tool `add_company` (`ats_platform` is automatically pre-tagged from `careers_url`, or can be passed explicitly if known):
 ```json
 {
   "name": "<company_name>",
   "careers_url": "<careers_url>",
+  "ats_platform": "<ats_platform>",
   "notes": "Discovered via <source>; stage: <stage>; domain: <domain>"
 }
 ```

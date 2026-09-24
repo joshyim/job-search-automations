@@ -524,6 +524,52 @@ else
 fi
 
 echo ""
+echo "--- 16. Verifying ATS Platform Pre-Tagging Documentation (PRO-66) ---"
+
+# crawl: documents upfront ats_platform checking and add_to_queue ats_platform parameter
+if grep -qi "ats_platform" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -q '"ats_platform":' "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Documents upfront ats_platform checking and add_to_queue parameter"
+else
+  fail "job-search-crawl: Missing ats_platform documentation in crawl skill"
+fi
+
+# assess: documents upfront ats_platform inspection before fetch
+if grep -qi "ats_platform" "$SKILLS_DIR/job-search-assess/SKILL.md" && \
+   grep -qi 'ats_platform === "ashby"' "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Documents upfront ats_platform strategy dispatch"
+else
+  fail "job-search-assess: Missing ats_platform strategy dispatch in assess skill"
+fi
+
+# company-search: documents ats_platform in add_company
+if grep -qi "ats_platform" "$SKILLS_DIR/company-search/SKILL.md"; then
+  pass "company-search: Documents ats_platform in add_company"
+else
+  fail "company-search: Missing ats_platform in company-search skill"
+fi
+
+# lead-gen: documents ats_platform in crawl and assess phases
+if grep -qi "ats_platform" "$SKILLS_DIR/job-search-lead-gen/SKILL.md"; then
+  pass "job-search-lead-gen: Documents ats_platform in orchestrator phases"
+else
+  fail "job-search-lead-gen: Missing ats_platform in lead-gen skill"
+fi
+
+# CLAUDE.md & AGENTS.md: document ATS Platform Pre-Tagging Architecture
+if grep -qi "ATS Platform Pre-Tagging Architecture (PRO-66)" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents ATS Platform Pre-Tagging Architecture"
+else
+  fail "CLAUDE.md: Missing ATS Platform Pre-Tagging Architecture"
+fi
+
+if grep -qi "ATS Platform Pre-Tagging Architecture (PRO-66)" "$PLUGIN_ROOT/AGENTS.md"; then
+  pass "AGENTS.md: Documents ATS Platform Pre-Tagging Architecture"
+else
+  fail "AGENTS.md: Missing ATS Platform Pre-Tagging Architecture"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="

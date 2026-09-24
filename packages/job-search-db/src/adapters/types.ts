@@ -6,6 +6,7 @@ export interface Company {
   id?: number;
   name: string;
   careers_url: string;
+  ats_platform?: string | null;
   is_excluded: boolean;
   notes?: string | null;
   last_searched_at?: string | null;
@@ -46,6 +47,7 @@ export interface QueueEntry {
   id?: number;
   url: string;
   company_name: string;
+  ats_platform?: string | null;
   status: QueueStatus;
   notes?: string | null;
   created_at?: string;
@@ -93,7 +95,7 @@ export interface DataAdapter {
 
   // Companies
   listCompanies(includeExcluded?: boolean): Promise<Company[]>;
-  addCompany(data: { name: string; careers_url: string; notes?: string; last_searched_at?: string }): Promise<Company>;
+  addCompany(data: { name: string; careers_url: string; ats_platform?: string; notes?: string; last_searched_at?: string }): Promise<Company>;
   updateCompany(currentName: string, updates: Partial<Company>): Promise<Company>;
   excludeCompany(name: string, reason?: string): Promise<Company>;
   getBatch(limit: number): Promise<Company[]>;
@@ -118,9 +120,9 @@ export interface DataAdapter {
 
   // Crawl Queue
   checkUrlExists(url: string): Promise<{ exists: boolean; entry?: QueueEntry }>;
-  addToQueue(data: { url: string; company_name: string; notes?: string }): Promise<QueueEntry>;
+  addToQueue(data: { url: string; company_name: string; ats_platform?: string; notes?: string }): Promise<QueueEntry>;
   getPendingQueue(companyName?: string, limit?: number): Promise<QueueEntry[]>;
-  listQueue(filters?: { status?: QueueStatus; company_name?: string; limit?: number }): Promise<QueueEntry[]>;
+  listQueue(filters?: { status?: QueueStatus; company_name?: string; ats_platform?: string; limit?: number }): Promise<QueueEntry[]>;
   updateQueueStatus(url: string, status: QueueStatus, notes?: string): Promise<QueueEntry>;
 
   // Candidates

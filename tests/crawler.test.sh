@@ -253,6 +253,7 @@ echo -e "\n${BOLD}--- 7. Individual Posting & SPA Placeholder Detection (PRO-62)
 POSTING_OUTPUT=$(node "$CRAWLER_SCRIPT" "https://jobs.ashbyhq.com/vanta/cf4358d4-1f34-40cc-b5b4-31a2e001136f" --posting --json 2>&1 || true)
 assert_contains "$POSTING_OUTPUT" '"title":' "Ashby posting resolution returns title"
 assert_contains "$POSTING_OUTPUT" '"company": "vanta"' "Ashby posting resolution returns company"
+assert_contains "$POSTING_OUTPUT" '"ats_platform": "ashby"' "Ashby posting resolution returns ats_platform ashby"
 assert_contains "$POSTING_OUTPUT" '"description":' "Ashby posting resolution returns description"
 assert_contains "$POSTING_OUTPUT" '"status": "open"' "Ashby posting resolution returns status open"
 
@@ -298,6 +299,56 @@ assert_contains "$INVALID_PROTO_OUTPUT" '"error": "invalid_protocol"' "Crawler o
 # 8.4 Crawl failure (SSRF / blocked IP) outputs JSON crawl_failed error
 CRAWL_FAIL_OUTPUT=$(cd "$ROOT_DIR" && node "$CRAWLER_SCRIPT" "http://127.0.0.1:1" --json 2>/dev/null || true)
 assert_contains "$CRAWL_FAIL_OUTPUT" '"error": "crawl_failed"' "Crawler outputs structured crawl_failed error on failure"
+
+# 9. ATS Platform Pre-Tagging on Extracted Listings (PRO-66)
+echo -e "\n${BOLD}--- 9. ATS Platform Pre-Tagging on Extracted Listings (PRO-66) ---${RESET}"
+
+ATS_FIXTURE_SCRIPT="
+import http from 'node:http';
+import { exec } from 'node:child_process';
+
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.end(\`
+    <html><body>
+      <a href=\"https://boards.greenhouse.io/testco/jobs/101\">Greenhouse Engineer</a>
+      <a href=\"https://jobs.lever.co/testco/202\">Lever Designer</a>
+      <a href=\"https://jobs.ashbyhq.com/testco/303\">Ashby Product Manager</a>
+      <a href=\"https://testco.myworkdayjobs.com/careers/404\">Workday Analyst</a>
+      <a href=\"/careers/custom-role-505\">Custom Role</a>
+    </body></html>
+  \`);
+}).listen(0, '127.0.0.1', () => {
+  const port = server.address().port;
+  exec('node scripts/crawl-job-board.js http://127.0.0.1:' + port + '/careers --allow-private --json', (err, stdout, stderr) => {
+    server.close();
+    try {
+      const items = JSON.parse(stdout || '[]');
+      const gh = items.find(i => i.title && i.title.includes('Greenhouse'));
+      const lev = items.find(i => i.title && i.title.includes('Lever'));
+      const ash = items.find(i => i.title && i.title.includes('Ashby'));
+      const wd = items.find(i => i.title && i.title.includes('Workday'));
+      const cust = items.find(i => i.title && i.title.includes('Custom'));
+      console.log(JSON.stringify({
+        ghPlatform: gh ? gh.ats_platform : null,
+        levPlatform: lev ? lev.ats_platform : null,
+        ashPlatform: ash ? ash.ats_platform : null,
+        wdPlatform: wd ? wd.ats_platform : null,
+        custPlatform: cust ? cust.ats_platform : null,
+      }));
+    } catch (e) {
+      console.log(JSON.stringify({ error: e.message, stdout, stderr }));
+    }
+  });
+});
+"
+
+ATS_TAG_RESULT=$(cd "$ROOT_DIR" && node -e "$ATS_FIXTURE_SCRIPT")
+assert_contains "$ATS_TAG_RESULT" '"ghPlatform":"greenhouse"' "Extracted Greenhouse link pre-tagged as greenhouse"
+assert_contains "$ATS_TAG_RESULT" '"levPlatform":"lever"' "Extracted Lever link pre-tagged as lever"
+assert_contains "$ATS_TAG_RESULT" '"ashPlatform":"ashby"' "Extracted Ashby link pre-tagged as ashby"
+assert_contains "$ATS_TAG_RESULT" '"wdPlatform":"workday"' "Extracted Workday link pre-tagged as workday"
+assert_contains "$ATS_TAG_RESULT" '"custPlatform":"custom"' "Extracted internal career link pre-tagged as custom"
 
 echo ""
 echo "=============================================================="

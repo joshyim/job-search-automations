@@ -36,12 +36,13 @@ export function registerQueueTools(server: McpServer, workspaceManager: Workspac
       directory: z.string().optional().describe('Alias for selected_directory'),
       url: httpUrlSchema.describe('The job posting URL'),
       company_name: z.string().describe('The company offering the job'),
+      ats_platform: z.string().optional().describe('ATS platform (e.g. ashby, greenhouse, lever, custom). Auto-detected from url if omitted.'),
       notes: z.string().optional().describe('Optional notes about the posting'),
     },
-    async ({ selected_directory, directory, url, company_name, notes }) => {
+    async ({ selected_directory, directory, url, company_name, ats_platform, notes }) => {
       try {
         const adapter = await workspaceManager.getAdapter(selected_directory || directory);
-        const entry = await adapter.addToQueue({ url, company_name, notes });
+        const entry = await adapter.addToQueue({ url, company_name, ats_platform, notes });
         return {
           content: [{ type: 'text', text: JSON.stringify(entry, null, 2) }],
         };
@@ -87,12 +88,13 @@ export function registerQueueTools(server: McpServer, workspaceManager: Workspac
       directory: z.string().optional().describe('Alias for selected_directory'),
       status: z.enum(['pending', 'assessed', 'skipped']).optional().describe('Filter by queue status'),
       company_name: z.string().optional().describe('Optional company name filter'),
+      ats_platform: z.string().optional().describe('Optional ATS platform filter (e.g. ashby, greenhouse, lever, custom)'),
       limit: z.number().optional().describe('Optional limit on number of items returned'),
     },
-    async ({ selected_directory, directory, status, company_name, limit }) => {
+    async ({ selected_directory, directory, status, company_name, ats_platform, limit }) => {
       try {
         const adapter = await workspaceManager.getAdapter(selected_directory || directory);
-        const entries = await adapter.listQueue({ status, company_name, limit });
+        const entries = await adapter.listQueue({ status, company_name, ats_platform, limit });
         return {
           content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }],
         };

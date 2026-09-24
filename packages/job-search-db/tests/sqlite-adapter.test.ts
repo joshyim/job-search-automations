@@ -219,6 +219,35 @@ describe('SqliteAdapter', () => {
       const pendingAfter = await adapter.getPendingQueue('Stripe');
       expect(pendingAfter).toHaveLength(0);
     });
+
+    it('auto-detects ats_platform, filters by ats_platform, and preserves ats_platform', async () => {
+      const ashbyEntry = await adapter.addToQueue({
+        url: 'https://jobs.ashbyhq.com/openai/123',
+        company_name: 'OpenAI',
+      });
+      expect(ashbyEntry.ats_platform).toBe('ashby');
+
+      const leverEntry = await adapter.addToQueue({
+        url: 'https://jobs.lever.co/netflix/456',
+        company_name: 'Netflix',
+      });
+      expect(leverEntry.ats_platform).toBe('lever');
+
+      const customEntry = await adapter.addToQueue({
+        url: 'https://company.com/jobs/789',
+        company_name: 'CustomCo',
+        ats_platform: 'custom',
+      });
+      expect(customEntry.ats_platform).toBe('custom');
+
+      const ashbyOnly = await adapter.listQueue({ ats_platform: 'ashby' });
+      expect(ashbyOnly).toHaveLength(1);
+      expect(ashbyOnly[0].company_name).toBe('OpenAI');
+
+      const leverOnly = await adapter.listQueue({ ats_platform: 'lever' });
+      expect(leverOnly).toHaveLength(1);
+      expect(leverOnly[0].company_name).toBe('Netflix');
+    });
   });
 
   describe('Candidate Operations', () => {
@@ -277,6 +306,61 @@ describe('SqliteAdapter', () => {
       expect(logs[0].urls_queued).toBe(5);
       expect(logs[0].candidates_scored).toBe(2);
       expect(logs[0].details).toEqual({ durationMs: 1200 });
+    });
+  });
+
+  describe('Migration and Schema Evolution (PRO-66)', () => {
+    it('automatically migrates tables without ats_platform and backfills existing rows', async () => {
+      const legacyDbPath = path.join(tempDir, 'legacy.sqlite');
+      const { DatabaseSync } = await import('node:sqlite');
+      const legacyDb = new DatabaseSync(legacyDbPath);
+
+      // Create legacy tables without ats_platform
+      legacyDb.exec(`
+        CREATE TABLE companies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            careers_url TEXT NOT NULL,
+            is_excluded INTEGER NOT NULL DEFAULT 0,
+            notes TEXT,
+            last_searched_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE crawl_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            url TEXT NOT NULL UNIQUE,
+            company_name TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT INTO companies (name, careers_url) VALUES ('OpenAI', 'https://jobs.ashbyhq.com/openai');
+        INSERT INTO companies (name, careers_url) VALUES ('GitHub', 'https://boards.greenhouse.io/github');
+        INSERT INTO companies (name, careers_url) VALUES ('Stripe', 'https://stripe.com/jobs');
+        INSERT INTO crawl_queue (url, company_name) VALUES ('https://jobs.lever.co/netflix/1', 'Netflix');
+      `);
+      legacyDb.close();
+
+      // Initialize SqliteAdapter on the legacy database
+      const legacyAdapter = new SqliteAdapter(legacyDbPath);
+      await legacyAdapter.initialize();
+
+      const companies = await legacyAdapter.listCompanies();
+      const openAi = companies.find(c => c.name === 'OpenAI');
+      const github = companies.find(c => c.name === 'GitHub');
+      const stripe = companies.find(c => c.name === 'Stripe');
+
+      expect(openAi?.ats_platform).toBe('ashby');
+      expect(github?.ats_platform).toBe('greenhouse');
+      expect(stripe?.ats_platform).toBeNull();
+
+      const queue = await legacyAdapter.listQueue();
+      expect(queue).toHaveLength(1);
+      expect(queue[0].ats_platform).toBe('lever');
+
+      await legacyAdapter.close();
     });
   });
 });
