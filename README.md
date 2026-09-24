@@ -49,7 +49,7 @@ The easiest and recommended way to install is simply to tell your AI assistant i
 Your AI assistant will automatically detect your host harness (Claude Code, GitHub Copilot, Codex, etc.) and run the appropriate setup.
 
 #### Manual Installation (Terminal)
-You can also run the zero-clone installer directly in your workspace terminal without cloning the repository or polluting your project directory:
+You can also run the zero-clone installer directly in your workspace terminal without cloning the repository or compiling from source (ships pre-built, ~1.1 MB download):
 
 ```bash
 # Universal / All compliant harnesses (GitHub Copilot, Cursor, Windsurf, standard default):

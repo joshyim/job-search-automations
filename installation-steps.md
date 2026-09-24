@@ -31,7 +31,13 @@ npx -y github:joshyim/job-search-automations setup --claude
 npx -y github:joshyim/job-search-automations setup --codex
 ```
 
-Run this command inside your target project workspace. It initializes the `.job-search/` workspace, pre-compiles and installs the plugin package, configures MCP stdio access, mounts skills, and sets up harness integration.
+Run this command inside your target project workspace. It initializes the `.job-search/` workspace, installs pre-built artifacts directly with zero client-side compilation, configures MCP stdio access, mounts skills, and sets up harness integration.
+
+> [!NOTE]
+> **Container & Sandbox Environments**: The package ships pre-built and requires zero client-side compilation or development tooling (~1.1 MB download). If your container or cloud environment encounters an `EACCES` permission error due to root-owned cache files in `~/.npm`, fix cache ownership by running:
+> ```bash
+> sudo chown -R "$(whoami)" ~/.npm
+> ```
 
 ### Setup Options & Flags
 
