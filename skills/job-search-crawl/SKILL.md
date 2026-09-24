@@ -110,6 +110,19 @@ node scripts/crawl-job-board.js "<job-board-url>" --json
 - **NEVER use interactive browser tools** (`Claude_Browser`, browser preview tabs, Puppeteer) during unattended or scheduled crawls.
 - Fast failure: If a company careers board is unreachable or yields no matching postings, log the result and advance to the next company immediately. Do not explore alternative sub-pages or retry in loops.
 
+**Known ATS-Specific Public API Patterns:**
+When encountering major ATS-hosted company boards or resolving postings, prefer lightweight direct ATS endpoints or the crawler script (`scripts/crawl-job-board.js`):
+- **Ashby** (`jobs.ashbyhq.com/<boardSlug>` or `<boardSlug>.ashbyhq.com`):
+  - **Public Board API (No Auth)**: `https://api.ashbyhq.com/posting-api/job-board/<boardSlug>` (returns all active jobs with full descriptions, departments, and metadata).
+  - **Single Posting Resolution**: Query the public board API above and match by `job.id` or `job.jobUrl`, or invoke `node scripts/crawl-job-board.js "<posting_url>" --posting --json`.
+  - **CRITICAL ANTI-PATTERN**: **NEVER** call `https://api.ashbyhq.com/posting-api/job/{id}` directly. That REST endpoint requires partner/customer API authentication and will fail with `HTTP 401 Unauthorized`. Always prefer the unauthenticated public board API (`/posting-api/job-board/<boardSlug>`).
+- **Greenhouse** (`boards.greenhouse.io/<boardToken>`):
+  - **Public Board API (No Auth)**: `https://boards-api.greenhouse.io/v1/boards/<boardToken>/jobs`
+  - **Single Posting API (No Auth)**: `https://boards-api.greenhouse.io/v1/boards/<boardToken>/jobs/<jobId>`
+- **Lever** (`jobs.lever.co/<boardToken>`):
+  - **Public Board API (No Auth)**: `https://api.lever.co/v0/postings/<boardToken>?mode=json`
+  - **Single Posting API (No Auth)**: `https://api.lever.co/v0/postings/<boardToken>/<jobId>`
+
 ### 2. Match and dedup via MCP
 
 1. Fetch target title patterns via MCP:
@@ -151,6 +164,6 @@ Each call adds the posting with status `pending`.
 ## Gotchas
 
 - Many ATS platforms (Ashby, Greenhouse, Lever) have direct API adapters in `scripts/crawl-job-board.js`.
-- **Ashby Public API**: Ashby career boards (`jobs.ashbyhq.com/<boardToken>`) and postings are client-rendered SPAs that return empty shells to raw `WebFetch`. Ashby exposes an unauthenticated public job board API at `https://api.ashbyhq.com/posting-api/job-board/<boardToken>` which provides complete plain-text and HTML job descriptions. Always crawl Ashby boards and postings via `scripts/crawl-job-board.js` rather than raw `WebFetch`.
+- **Ashby Public API vs Authenticated Endpoint**: Ashby career boards (`jobs.ashbyhq.com/<boardSlug>`) and postings are client-rendered SPAs that return empty shells to raw `WebFetch`. Ashby exposes an unauthenticated public job board API at `https://api.ashbyhq.com/posting-api/job-board/<boardSlug>` which provides complete plain-text and HTML job descriptions. Always crawl Ashby boards and postings via `scripts/crawl-job-board.js` or query `/posting-api/job-board/<boardSlug>`. Never attempt Ashby's per-posting REST endpoint (`/posting-api/job/{id}`), as it requires API authentication and returns `HTTP 401 Unauthorized`.
 - If a custom careers site yields no listings or returns an SPA JavaScript placeholder, do not burn repeated fetch attempts. Fast-fail and proceed to the next target.
 - Crawl output may concatenate title/department/location. Parse the title as text before the first department label.

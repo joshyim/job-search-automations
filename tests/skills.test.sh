@@ -479,6 +479,51 @@ else
 fi
 
 echo ""
+echo "--- 14. Verifying Known ATS Public API Patterns & Ashby 401 Prevention (PRO-65) ---"
+
+# crawl: documents Ashby public board API and warns against authenticated /posting-api/job/ 401
+if grep -qi "posting-api/job-board" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "posting-api/job/" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "401 Unauthorized" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Documents Ashby public board API and warns against /posting-api/job/ 401"
+else
+  fail "job-search-crawl: Missing Ashby public board API or 401 warning in crawl skill"
+fi
+
+# crawl: documents known ATS-specific public API patterns upfront
+if grep -qi "Known ATS-Specific Public API Patterns" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "boards-api.greenhouse.io" "$SKILLS_DIR/job-search-crawl/SKILL.md" && \
+   grep -qi "api.lever.co" "$SKILLS_DIR/job-search-crawl/SKILL.md"; then
+  pass "job-search-crawl: Documents known ATS public API patterns (Ashby, Greenhouse, Lever)"
+else
+  fail "job-search-crawl: Missing known ATS public API patterns in crawl skill"
+fi
+
+# assess: warns against Ashby /posting-api/job/ 401
+if grep -qi "posting-api/job/" "$SKILLS_DIR/job-search-assess/SKILL.md" && \
+   grep -qi "401 Unauthorized" "$SKILLS_DIR/job-search-assess/SKILL.md"; then
+  pass "job-search-assess: Documents Ashby 401 Unauthorized prevention"
+else
+  fail "job-search-assess: Missing Ashby 401 Unauthorized prevention in assess skill"
+fi
+
+# CLAUDE.md: documents Ashby public board API and warns against 401
+if grep -qi "posting-api/job-board" "$PLUGIN_ROOT/CLAUDE.md" && \
+   grep -qi "401 Unauthorized" "$PLUGIN_ROOT/CLAUDE.md"; then
+  pass "CLAUDE.md: Documents Ashby public board API and 401 Unauthorized warning"
+else
+  fail "CLAUDE.md: Missing Ashby public board API or 401 warning in CLAUDE.md"
+fi
+
+# AGENTS.md: documents Ashby public board API and warns against 401
+if grep -qi "posting-api/job-board" "$PLUGIN_ROOT/AGENTS.md" && \
+   grep -qi "401 Unauthorized" "$PLUGIN_ROOT/AGENTS.md"; then
+  pass "AGENTS.md: Documents Ashby public board API and 401 Unauthorized warning"
+else
+  fail "AGENTS.md: Missing Ashby public board API or 401 warning in AGENTS.md"
+fi
+
+echo ""
 echo "=================================================="
 echo "Results: $PASSED passed, $FAILED failed"
 echo "=================================================="

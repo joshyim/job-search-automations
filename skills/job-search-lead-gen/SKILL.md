@@ -44,7 +44,7 @@ For each company in the batch, execute both phases completely before moving to t
 
 **Phase A - Crawl:**
 Read and follow `skills/job-search-crawl/SKILL.md` for this company. Pass the company name, careers URL, and workspace directory.
-The crawl skill uses `scripts/crawl-job-board.js`, matches postings against title patterns via `list_title_patterns`, deduplicates via `check_url_exists`, and writes pending roles via `add_to_queue`.
+The crawl skill uses `scripts/crawl-job-board.js`, matches postings against title patterns via `list_title_patterns`, deduplicates via `check_url_exists`, and writes pending roles via `add_to_queue`. For ATS boards (Ashby, Greenhouse, Lever), it leverages known public ATS APIs—specifically Ashby's unauthenticated public board API (`/posting-api/job-board/<boardSlug>`), avoiding the authenticated `/posting-api/job/{id}` endpoint.
 
 **Phase B - Assess:**
 Read and follow `skills/job-search-assess/SKILL.md` for this company. Pass the company name and workspace directory.
