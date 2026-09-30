@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "description": "Job Search Automation plugin with dual-mode MCP server and Web UI Dashboard",
   "scripts": {
     "ui": "npm run start --prefix packages/job-search-ui",

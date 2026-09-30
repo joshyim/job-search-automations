@@ -17,7 +17,6 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { execSync, execFileSync } from 'node:child_process';
-import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -30,6 +29,36 @@ const CYAN = '\x1b[36m';
 const YELLOW = '\x1b[33m';
 const RED = '\x1b[31m';
 const RESET = '\x1b[0m';
+
+// Minimum Node version: node:sqlite is available without --experimental-sqlite from 22.13.0 / 23.4.0.
+// Checked before node:sqlite is loaded (dynamic import below) so older runtimes get a clear message.
+const [NODE_MAJOR, NODE_MINOR] = process.versions.node.split('.').map(Number);
+if (NODE_MAJOR < 22 || (NODE_MAJOR === 22 && NODE_MINOR < 13) || (NODE_MAJOR === 23 && NODE_MINOR < 4)) {
+  console.error(`${RED}[ERROR] Node.js 22.13 or higher is required (found ${process.versions.node}).${RESET}`);
+  console.error('Install the current LTS from https://nodejs.org and re-run this command.');
+  process.exit(1);
+}
+
+// Absolute path of the running Node binary. Written into generated MCP configs instead of bare `node`
+// so desktop apps that do not load shell profiles (nvm/fnm PATH setup) can still launch the server.
+// Prefers a PATH entry that resolves to the same binary (e.g. /opt/homebrew/bin/node) over
+// process.execPath, which can be a versioned directory removed by package-manager upgrades.
+function resolveNodeBin() {
+  const exec = process.execPath;
+  const nodeName = process.platform === 'win32' ? 'node.exe' : 'node';
+  try {
+    const execReal = fs.realpathSync(exec);
+    for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+      if (!dir) continue;
+      const candidate = path.join(dir, nodeName);
+      try {
+        if (fs.realpathSync(candidate) === execReal) return candidate;
+      } catch {}
+    }
+  } catch {}
+  return exec;
+}
+const NODE_BIN = resolveNodeBin();
 
 function expandPath(p) {
   if (!p) return p;
@@ -234,7 +263,7 @@ function updateCodexConfig(configTomlPath, projectDir, relativeStartJs) {
 
   const block = [
     '[mcp_servers.job-search-db]',
-    'command = "node"',
+    `command = "${NODE_BIN.replace(/\\/g, '/')}"`,
     `args = ["${relativeStartJs.replace(/\\/g, '/')}"]`,
     `cwd = "${projectDir.replace(/\\/g, '/')}"`,
     'default_tools_approval_mode = "writes"',
@@ -484,7 +513,7 @@ async function handleSetup(args) {
 
     mcpConfig.mcpServers['job-search-db'] = {
       type: 'stdio',
-      command: 'node',
+      command: NODE_BIN,
       args: [relativeStartJs],
     };
 
@@ -677,7 +706,7 @@ async function handleSetup(args) {
     }
     mcpConfig.mcpServers['job-search-db'] = {
       type: 'stdio',
-      command: 'node',
+      command: NODE_BIN,
       args: [relativeStartJs],
     };
     fs.writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + '\n');
@@ -697,7 +726,7 @@ async function handleSetup(args) {
       }
       vscodeMcp.mcpServers['job-search-db'] = {
         type: 'stdio',
-        command: 'node',
+        command: NODE_BIN,
         args: [relativeStartJs],
       };
       fs.writeFileSync(vscodeConfigPath, JSON.stringify(vscodeMcp, null, 2) + '\n');
@@ -775,6 +804,7 @@ async function handleSetup(args) {
   if (mode === 'local') {
     if (!fs.existsSync(targetSqlite) || force) {
       console.log(`${CYAN}[*] Initializing SQLite database at ${targetSqlite}...${RESET}`);
+      const { DatabaseSync } = await import('node:sqlite');
       const db = new DatabaseSync(targetSqlite);
       db.exec('PRAGMA journal_mode = WAL;');
       db.exec('PRAGMA foreign_keys = ON;');

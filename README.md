@@ -22,7 +22,8 @@ You set the rules. Your AI does the hunting.
 
 ## Prerequisites
 
-- **Node.js**: Version 18 or higher.
+- **Node.js**: Version 22.13 or higher (`node -v`). Required because the plugin installs via `npx` and uses the built-in `node:sqlite` module.
+  - If you manage Node with **nvm** or **fnm**, run setup with the version you want the plugin to use. Setup records that Node's absolute path in the generated MCP config so desktop apps (which may not load your shell profile) can find it. If you later remove that Node version, re-run setup.
 - **Optional**: Neon PostgreSQL connection string (only if choosing Neon cloud mode; Local SQLite mode requires zero cloud services).
 
 ---
