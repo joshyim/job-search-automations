@@ -4,6 +4,22 @@ This repository provides an automated, skill-based job search pipeline with loca
 
 This document defines runtime behavior, architecture, and constraints for **Codex**, **ChatGPT desktop Codex tasks**, and conforming **Agent Plugins v1** harnesses.
 
+## Strict Repository & Filesystem Boundaries
+
+> [!CRITICAL]
+> **STRICT REPOSITORY BOUNDARY — NEVER TOUCH OUTSIDE PATHS**
+> Agents working in this repository are strictly confined to the current workspace's repo.
+>
+> 1. **Zero Access to External Workspaces**:
+>    Under NO circumstances may any agent read, write, copy, touch, mutate, or inspect files outside this repo.
+> 2. **No Manual Distribution or File Copying**:
+>    Never manually copy build artifacts, packages, skills, or source files into installed runtimes.
+> 3. **Installer Only**:
+>    All updates to external runtimes must ONLY ever be performed by the user via the official installer.
+> 4. **No External Database Access in Tests**:
+>    Test scripts, runners, and tools in this repo must NEVER point to, touch, or mutate live external databases. All testing must use isolated in-memory or ephemeral `/tmp` test fixtures.
+
+
 ## Quickstart - Codex & ChatGPT
 
 When a user in Codex Desktop, Codex CLI, or ChatGPT Codex task asks to install, set up, or get started with Job Search Automation:

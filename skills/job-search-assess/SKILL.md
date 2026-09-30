@@ -56,7 +56,7 @@ Before processing:
      | Title match | 25 | 25% | Little to no title relevance | Partial title keyword overlap | Exact title match or target senior/lead level |
      ...
      ```
-2. Call MCP tool `list_skills()` to retrieve target candidate skills (P1 and P2 priority skills, categories, notes).
+2. Call MCP tool `list_skills()` to retrieve target candidate skills (P1 - Must Have and P2 - Preferred priority skills, categories, notes).
 3. Read `<selected-directory>/.job-search/resume.pdf` to ground experience and skills.
 
 ### 3. Process each posting individually
@@ -119,9 +119,13 @@ Assemble the assessment prompt dynamically:
 Prompt evaluation criteria:
 - Evaluate posting against candidate resume and the dynamically injected rubric table.
 - Dimension matching is strictly case-insensitive (`.trim().toLowerCase()`).
-- Score each dimension from 1.0 to 5.0 (poor: 1-2, moderate: 3, strong: 4-5) according to the rubric tier descriptions.
-- Calculate final weighted score:
-  `weighted_score = sum(dimension_score * (normalized_weight / 100))` rounded to one decimal place.
+- **Rubric Judgment Scale (1.0–5.0)**: Judge each dimension from 1.0 to 5.0 (poor: 1-2, moderate: 3, strong: 4-5) according to the rubric tier criteria.
+- **Conversion to Stored Percentages (20.0–100.0)**: Convert each dimension rating into a percentage:
+  `dimension_percentage = (dimension_rating / 5) * 100`
+  (With the rubric's minimum rating of 1.0, valid percentages range from 20.0 to 100.0).
+- **Overall Match Score (0.0–100.0)**: Calculate the overall score as the exact-weight average of the dimension percentages, rounded half up to one decimal place:
+  `weighted_score = round_half_up(sum(dimension_percentage * dimension_weight) / sum(dimension_weights), 1)`
+- Verify that every dimension defined in the active rubric is scored and present in `breakdown`.
 - Generate a 1-2 sentence role synopsis summarizing fit, focus area, and standout requirements.
 
 **Record Candidate:**
@@ -134,8 +138,10 @@ Prompt evaluation criteria:
     "location": "<location>",
     "score": <weighted_score>,
     "breakdown": {
-      "<dimension_1>": <score_1>,
-      "<dimension_2>": <score_2>
+      "Title match": <percentage_1>,
+      "Skills match": <percentage_2>,
+      "Experience match": <percentage_3>,
+      "Seniority fit": <percentage_4>
     },
     "status": "new",
     "notes": "<role_synopsis>"
@@ -147,7 +153,7 @@ Prompt evaluation criteria:
   {
     "url": "<posting_url>",
     "status": "assessed",
-    "notes": "Scored <weighted_score>"
+    "notes": "Scored <weighted_score>/100"
   }
   ```
 

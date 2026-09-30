@@ -28,6 +28,7 @@ export declare class LocalAdapter implements DataAdapter {
     updateTitlePattern(pattern: string, type: TitlePatternType, updates: Partial<TitlePattern>): Promise<TitlePattern>;
     removeTitlePattern(pattern: string, type?: TitlePatternType): Promise<boolean>;
     listSkills(category?: string): Promise<Skill[]>;
+    private normalizeSkillImportance;
     addSkill(data: {
         name: string;
         category?: string;

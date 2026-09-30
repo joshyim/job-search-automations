@@ -1,4 +1,21 @@
 import { z } from 'zod';
+const skillImportanceSchema = z
+    .preprocess((val) => {
+    if (typeof val === 'string') {
+        const trimmed = val.trim().toLowerCase();
+        if (trimmed === 'core')
+            return 'P1';
+        if (trimmed === 'preferred')
+            return 'P2';
+        if (trimmed === 'p1')
+            return 'P1';
+        if (trimmed === 'p2')
+            return 'P2';
+    }
+    return val;
+}, z.enum(['P1', 'P2']))
+    .optional()
+    .describe('Skill priority/importance: "P1" (Must Have) or "P2" (Preferred)');
 export function registerSkillTools(server, workspaceManager) {
     server.tool('list_skills', 'List target skills, optionally filtered by category', {
         selected_directory: z.string().optional().describe('Path to the selected project workspace directory containing .job-search/'),
@@ -24,12 +41,13 @@ export function registerSkillTools(server, workspaceManager) {
         directory: z.string().optional().describe('Alias for selected_directory'),
         name: z.string().describe('Name of the skill (e.g. "TypeScript", "PostgreSQL")'),
         category: z.string().optional().describe('Skill category (e.g. Languages, Databases, AI/ML)'),
-        importance: z.string().optional().describe('Skill priority/importance (e.g. core, preferred, P1, P2)'),
+        importance: skillImportanceSchema,
         notes: z.string().optional().describe('Optional notes about target proficiency or context'),
     }, async ({ selected_directory, directory, name, category, importance, notes }) => {
         try {
             const adapter = await workspaceManager.getAdapter(selected_directory || directory);
-            const skill = await adapter.addSkill({ name, category, importance, notes });
+            const resolvedImportance = importance !== undefined ? skillImportanceSchema.parse(importance) : undefined;
+            const skill = await adapter.addSkill({ name, category, importance: resolvedImportance, notes });
             return {
                 content: [{ type: 'text', text: JSON.stringify(skill, null, 2) }],
             };
@@ -46,12 +64,13 @@ export function registerSkillTools(server, workspaceManager) {
         directory: z.string().optional().describe('Alias for selected_directory'),
         name: z.string().describe('The name of the skill to update'),
         category: z.string().optional().describe('New skill category'),
-        importance: z.string().optional().describe('New skill priority/importance'),
+        importance: skillImportanceSchema,
         notes: z.string().optional().describe('New notes'),
     }, async ({ selected_directory, directory, name, category, importance, notes }) => {
         try {
             const adapter = await workspaceManager.getAdapter(selected_directory || directory);
-            const skill = await adapter.updateSkill(name, { category, importance, notes });
+            const resolvedImportance = importance !== undefined ? skillImportanceSchema.parse(importance) : undefined;
+            const skill = await adapter.updateSkill(name, { category, importance: resolvedImportance, notes });
             return {
                 content: [{ type: 'text', text: JSON.stringify(skill, null, 2) }],
             };

@@ -320,10 +320,14 @@ async function main() {
     for (const row of skillSec.rows) {
       const skill = row['Skill'] || row['Name'] || '';
       const category = row['Category'] || '';
-      const importance = row['Importance'] || row['Level'] || 'preferred';
+      const rawImportance = (row['Importance'] || row['Level'] || 'P2').trim();
+      let importance = rawImportance;
+      const lowerImp = rawImportance.toLowerCase();
+      if (lowerImp === 'core' || lowerImp === 'p1') importance = 'P1';
+      else if (lowerImp === 'preferred' || lowerImp === 'p2') importance = 'P2';
       const notes = row['Notes'] || '';
       if (skill.trim()) {
-        parsedSkills.push({ skill: skill.trim(), category: category.trim(), importance: importance.trim(), notes: notes.trim() });
+        parsedSkills.push({ skill: skill.trim(), category: category.trim(), importance, notes: notes.trim() });
       }
     }
   }
@@ -489,7 +493,7 @@ async function main() {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
             category TEXT,
-            importance TEXT DEFAULT 'preferred',
+            importance TEXT DEFAULT 'P2',
             notes TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
@@ -585,7 +589,7 @@ async function main() {
           notes = excluded.notes
       `);
       for (const s of parsedSkills) {
-        insertSkill.run(s.skill, s.category || null, s.importance || 'preferred', s.notes || null);
+        insertSkill.run(s.skill, s.category || null, s.importance || 'P2', s.notes || null);
       }
 
       // 4. Rubric

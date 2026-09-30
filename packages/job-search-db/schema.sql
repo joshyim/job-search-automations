@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS skills (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL UNIQUE,
     category VARCHAR(100),
-    importance VARCHAR(50) DEFAULT 'preferred',
+    importance VARCHAR(50) DEFAULT 'P2',
     notes TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

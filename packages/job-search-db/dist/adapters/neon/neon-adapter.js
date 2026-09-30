@@ -1,5 +1,6 @@
 import { Pool } from '@neondatabase/serverless';
 import { detectAtsPlatform, normalizeAtsPlatform } from '../../ats.js';
+import { validateCandidateScoreAndBreakdown } from '../../scoring.js';
 export class NeonAdapter {
     connectionString;
     pool;
@@ -381,7 +382,7 @@ export class NeonAdapter {
         const result = await this.pool.query(query, [
             data.name,
             data.category || null,
-            data.importance || 'preferred',
+            data.importance || 'P2',
             data.notes || null,
         ]);
         const r = result.rows[0];
@@ -721,6 +722,8 @@ export class NeonAdapter {
     }
     // --- Candidates ---
     async addCandidate(data) {
+        const rubric = await this.getScoringRubric();
+        const validated = validateCandidateScoreAndBreakdown(data, rubric);
         const query = `
       INSERT INTO candidates (company_name, job_title, url, location, score, breakdown, status, notes, updated_at)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
@@ -740,18 +743,38 @@ export class NeonAdapter {
                 applied_at::text as applied_at,
                 updated_at::text as updated_at
     `;
-        const breakdownJson = data.breakdown ? JSON.stringify(data.breakdown) : null;
+        const breakdownJson = validated.breakdown ? JSON.stringify(validated.breakdown) : null;
         const result = await this.pool.query(query, [
             data.company_name,
             data.job_title,
             data.url,
             data.location || null,
-            data.score !== undefined ? data.score : null,
+            validated.score,
             breakdownJson,
             data.status || 'new',
             data.notes || null,
         ]);
         const r = result.rows[0];
+        // Queue integration & assessment flow triggering
+        if (validated.needsAssessment) {
+            await this.addToQueue({
+                url: data.url,
+                company_name: data.company_name,
+                ats_platform: detectAtsPlatform(data.url) || undefined,
+                notes: data.score !== undefined && data.score !== null
+                    ? 'Pending assessment flow to generate breakdown and update score'
+                    : 'Pending initial rubric assessment',
+            });
+        }
+        else {
+            try {
+                const queueCheck = await this.checkUrlExists(data.url);
+                if (queueCheck.exists && queueCheck.entry?.status === 'pending') {
+                    await this.updateQueueStatus(data.url, 'assessed', `Scored ${validated.score !== null ? validated.score : ''}`.trim());
+                }
+            }
+            catch { }
+        }
         return {
             id: r.id,
             company_name: r.company_name,

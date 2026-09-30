@@ -28,12 +28,12 @@ Before beginning:
 1. Fetch existing patterns via MCP:
    - Call `list_title_patterns()` to retrieve include and exclude patterns.
 2. Fetch target candidate skills via MCP:
-   - Call `list_skills()` to retrieve target skills, categories, and priority levels (P1/P2).
+   - Call `list_skills()` to retrieve target skills, categories, and priority levels (P1 - Must Have, P2 - Preferred).
 3. Read `<selected-directory>/.job-search/resume.pdf` to understand candidate seniority, experience, and background.
 
 ### 2. Search for title variants
 
-Search job boards (LinkedIn, Wellfound, BuiltIn, Greenhouse boards, Lever boards) and industry postings for roles whose descriptions match P1 and P2 key skills. Look for:
+Search job boards (LinkedIn, Wellfound, BuiltIn, Greenhouse boards, Lever boards) and industry postings for roles whose descriptions match P1 (Must Have) and P2 (Preferred) key skills. Look for:
 - **Alternate names for the same function**: e.g., "Technical Program Manager (AI)" vs "AI Product Manager".
 - **Emerging titles**: Newer titles the market has adopted (e.g., "AI Enablement Lead", "ML Platform PM").
 - **Company-specific titles**: e.g., "Product Lead", "Program Manager - AI Products".
@@ -47,7 +47,7 @@ Focus strictly on titles that fall **outside** all existing patterns.
 ### 4. Validate uncovered titles
 
 Confirm:
-- **Skill overlap**: Role's typical responsibilities match at least 2 P1 key skills or 1 P1 + 2 P2 skills.
+- **Skill overlap**: Role's typical responsibilities match at least 2 P1 key skills (Must Have) or 1 P1 + 2 P2 skills (Preferred).
 - **Function fit**: Role is primarily product management, product strategy, or a closely adjacent function (not purely engineering, design, marketing, sales).
 - **Seniority fit**: Seniority range aligns with candidate background (Senior through Principal / Director).
 

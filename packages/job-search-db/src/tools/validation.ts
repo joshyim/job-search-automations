@@ -15,3 +15,4 @@ export const httpUrlSchema = z.string().refine(
   },
   { message: 'URL must be a valid HTTP or HTTPS URL' }
 );
+export * from '../scoring.js';

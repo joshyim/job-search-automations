@@ -164,6 +164,16 @@ describe('NeonAdapter', () => {
   describe('Candidate Operations', () => {
     it('adds and updates candidate status with parameterized query', async () => {
       const mockPool = createMockPool();
+      // 1. getScoringRubric call
+      mockPool.query.mockResolvedValueOnce({
+        rows: [
+          { id: 1, dimension: 'Title match', weight: 25 },
+          { id: 2, dimension: 'Skills match', weight: 30 },
+          { id: 3, dimension: 'Experience match', weight: 25 },
+          { id: 4, dimension: 'Seniority fit', weight: 20 },
+        ],
+      });
+      // 2. INSERT INTO candidates call
       mockPool.query.mockResolvedValueOnce({
         rows: [
           {
@@ -172,8 +182,13 @@ describe('NeonAdapter', () => {
             job_title: 'Staff Engineer',
             url: 'https://stripe.com/jobs/1',
             location: 'Remote',
-            score: 9.5,
-            breakdown: { title: 10 },
+            score: 95.0,
+            breakdown: {
+              'Title match': 95,
+              'Skills match': 95,
+              'Experience match': 95,
+              'Seniority fit': 95,
+            },
             status: 'new',
             notes: 'High fit',
             discovered_at: '2026-09-06T00:00:00Z',
@@ -182,6 +197,8 @@ describe('NeonAdapter', () => {
           },
         ],
       });
+      // 3. checkUrlExists queue check
+      mockPool.query.mockResolvedValueOnce({ rows: [] });
 
       const adapter = new NeonAdapter({
         connectionString: 'postgres://mock/db',
@@ -193,8 +210,13 @@ describe('NeonAdapter', () => {
         job_title: 'Staff Engineer',
         url: 'https://stripe.com/jobs/1',
         location: 'Remote',
-        score: 9.5,
-        breakdown: { title: 10 },
+        score: 95.0,
+        breakdown: {
+          'Title match': 95,
+          'Skills match': 95,
+          'Experience match': 95,
+          'Seniority fit': 95,
+        },
         notes: 'High fit',
       });
 

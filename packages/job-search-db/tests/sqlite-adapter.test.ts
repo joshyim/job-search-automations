@@ -136,7 +136,14 @@ describe('SqliteAdapter', () => {
   });
 
   describe('Skill Operations', () => {
-    it('adds, lists, updates, and removes skills', async () => {
+    it('adds, lists, updates, and removes skills with P1/P2 standardization', async () => {
+      // Test default importance falls back to P2
+      const defaultSkill = await adapter.addSkill({
+        name: 'Docker',
+        category: 'DevOps',
+      });
+      expect(defaultSkill.importance).toBe('P2');
+
       await adapter.addSkill({
         name: 'TypeScript',
         category: 'Languages',
@@ -149,19 +156,48 @@ describe('SqliteAdapter', () => {
       });
 
       const allSkills = await adapter.listSkills();
-      expect(allSkills).toHaveLength(2);
+      expect(allSkills).toHaveLength(3);
 
       const dbSkills = await adapter.listSkills('Databases');
       expect(dbSkills).toHaveLength(1);
       expect(dbSkills[0].name).toBe('PostgreSQL');
 
+      // Update skill with valid P2
+      await adapter.updateSkill('TypeScript', { importance: 'P2' });
+      let updatedSkills = await adapter.listSkills('Languages');
+      expect(updatedSkills[0].importance).toBe('P2');
+
+      // Update skill with legacy 'core' normalizes to 'P1'
       await adapter.updateSkill('TypeScript', { importance: 'core' });
-      const updatedSkills = await adapter.listSkills('Languages');
-      expect(updatedSkills[0].importance).toBe('core');
+      updatedSkills = await adapter.listSkills('Languages');
+      expect(updatedSkills[0].importance).toBe('P1');
 
       const removed = await adapter.removeSkill('PostgreSQL');
       expect(removed).toBe(true);
-      expect(await adapter.listSkills()).toHaveLength(1);
+      expect(await adapter.listSkills()).toHaveLength(2);
+    });
+
+    it('migrates legacy core/preferred values to P1/P2 and logs to run_logs', async () => {
+      const db = adapter.getDatabase();
+      // Insert legacy rows directly bypassing adapter normalization
+      db.prepare("INSERT INTO skills (name, category, importance, created_at) VALUES ('LegacySkill1', 'Test', 'core', datetime('now'))").run();
+      db.prepare("INSERT INTO skills (name, category, importance, created_at) VALUES ('LegacySkill2', 'Test', 'preferred', datetime('now'))").run();
+
+      // Trigger initialize which runs one-time migration
+      await adapter.initialize();
+
+      const skill1 = db.prepare("SELECT importance FROM skills WHERE name = 'LegacySkill1'").get() as any;
+      const skill2 = db.prepare("SELECT importance FROM skills WHERE name = 'LegacySkill2'").get() as any;
+      expect(skill1.importance).toBe('P1');
+      expect(skill2.importance).toBe('P2');
+
+      // Verify migration was logged in run_logs
+      const recentRuns = await adapter.getRecentRuns(5);
+      const migrationLog = recentRuns.find((r) => (r.details as any)?.migration === 'skills_importance_p1_p2');
+      expect(migrationLog).toBeDefined();
+      expect(migrationLog?.summary).toContain('Migrated');
+      expect((migrationLog?.details as any)?.core_to_p1).toBeGreaterThanOrEqual(1);
+      expect((migrationLog?.details as any)?.preferred_to_p2).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -258,7 +294,12 @@ describe('SqliteAdapter', () => {
         url: 'https://stripe.com/jobs/staff',
         location: 'Remote',
         score: 88,
-        breakdown: { 'Title match': 25, 'Skills match': 30 },
+        breakdown: {
+          'Title match': 88,
+          'Skills match': 88,
+          'Experience match': 88,
+          'Seniority fit': 88,
+        },
         status: 'new',
       });
 
@@ -278,7 +319,12 @@ describe('SqliteAdapter', () => {
       const filtered = await adapter.getCandidates({ min_score: 80 });
       expect(filtered).toHaveLength(1);
       expect(filtered[0].company_name).toBe('Stripe');
-      expect(filtered[0].breakdown).toEqual({ 'Title match': 25, 'Skills match': 30 });
+      expect(filtered[0].breakdown).toEqual({
+        'Title match': 88,
+        'Skills match': 88,
+        'Experience match': 88,
+        'Seniority fit': 88,
+      });
 
       const updated = await adapter.updateCandidateStatus(
         'https://stripe.com/jobs/staff',

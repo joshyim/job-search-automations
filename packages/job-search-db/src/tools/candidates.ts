@@ -15,8 +15,20 @@ export function registerCandidateTools(server: McpServer, workspaceManager: Work
       job_title: z.string().describe('Job title'),
       url: httpUrlSchema.describe('Job posting URL'),
       location: z.string().optional().describe('Job location (e.g. Remote, San Francisco, CA)'),
-      score: z.number().optional().describe('Overall match score (0-10 or 0-100)'),
-      breakdown: z.record(z.number()).optional().describe('Score breakdown by rubric dimension'),
+      score: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe(
+          'Overall match score on a 0-100 scale (weighted average of dimension percentages rounded to 1 decimal place). If omitted when breakdown is supplied, it is automatically computed.'
+        ),
+      breakdown: z
+        .record(z.number().min(20).max(100))
+        .optional()
+        .describe(
+          'Score breakdown by rubric dimension percentage (20.0-100.0, where dimension_percentage = dimension_rating / 5 * 100). If omitted, posting is enrolled in queue to trigger the assessment flow.'
+        ),
       status: z.enum(['new', 'applied', 'in_progress', 'not_pursuing', 'closed', 'interviewing', 'rejected', 'offer']).optional().describe('Pipeline status (default "new"). Note: Assessment agents must only set "new"; other statuses are reserved for human user disposition.'),
       notes: z.string().optional().describe('Notes, key strengths, or interview highlights'),
     },

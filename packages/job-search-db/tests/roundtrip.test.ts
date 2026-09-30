@@ -63,8 +63,13 @@ describe('Markdown Storage Round-Trip Fidelity', () => {
       job_title: 'Staff Software Engineer',
       url: 'https://stripe.com/jobs/101',
       location: 'Remote, US',
-      score: 9.4,
-      breakdown: { title: 9.5, skills: 9.0 },
+      score: 94.0,
+      breakdown: {
+        'Title match': 95,
+        'Skills match': 93,
+        'Experience match': 95,
+        'Seniority fit': 93,
+      },
       status: 'new',
       notes: 'Strong candidate',
     });

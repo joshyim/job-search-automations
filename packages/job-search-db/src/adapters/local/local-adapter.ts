@@ -16,6 +16,7 @@ import {
 } from '../types.js';
 import { MarkdownTableParser } from './markdown-parser.js';
 import { detectAtsPlatform, normalizeAtsPlatform } from '../../ats.js';
+import { validateCandidateScoreAndBreakdown } from '../../scoring.js';
 
 export class LocalAdapter implements DataAdapter {
   private workflowDataPath: string;
@@ -379,6 +380,14 @@ export class LocalAdapter implements DataAdapter {
     return skills;
   }
 
+  private normalizeSkillImportance(importance?: string | null): string {
+    if (!importance) return 'P2';
+    const lower = importance.trim().toLowerCase();
+    if (lower === 'core' || lower === 'p1') return 'P1';
+    if (lower === 'preferred' || lower === 'p2') return 'P2';
+    return importance.trim();
+  }
+
   public async addSkill(data: { name: string; category?: string; importance?: string; notes?: string }): Promise<Skill> {
     const content = this.readFile('target-job-titles-and-skills.md');
     const headers = ['Skill', 'Category', 'Importance', 'Notes'];
@@ -388,10 +397,11 @@ export class LocalAdapter implements DataAdapter {
       r => (r['Skill'] || '').toLowerCase() === data.name.toLowerCase()
     );
 
+    const imp = this.normalizeSkillImportance(data.importance);
     const newRow: Record<string, string> = {
       'Skill': data.name,
       'Category': data.category || '',
-      'Importance': data.importance || 'preferred',
+      'Importance': imp,
       'Notes': data.notes || '',
     };
 
@@ -407,7 +417,7 @@ export class LocalAdapter implements DataAdapter {
     return {
       name: data.name,
       category: data.category || null,
-      importance: data.importance || 'preferred',
+      importance: imp,
       notes: data.notes || null,
     };
   }
@@ -428,7 +438,7 @@ export class LocalAdapter implements DataAdapter {
     const row = table.rows[existingIdx];
     if (updates.name !== undefined) row['Skill'] = updates.name;
     if (updates.category !== undefined) row['Category'] = updates.category || '';
-    if (updates.importance !== undefined) row['Importance'] = updates.importance || '';
+    if (updates.importance !== undefined) row['Importance'] = this.normalizeSkillImportance(updates.importance);
     if (updates.notes !== undefined) row['Notes'] = updates.notes || '';
 
     const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows, '## Skills');
@@ -737,6 +747,9 @@ export class LocalAdapter implements DataAdapter {
     notes?: string;
     status?: CandidateStatus;
   }): Promise<Candidate> {
+    const rubric = await this.getScoringRubric();
+    const validated = validateCandidateScoreAndBreakdown(data, rubric);
+
     const content = this.readFile('job-candidates.md');
     const headers = [
       'Company',
@@ -760,8 +773,8 @@ export class LocalAdapter implements DataAdapter {
       job_title: data.job_title,
       url: data.url,
       location: data.location || null,
-      score: data.score !== undefined ? data.score : null,
-      breakdown: data.breakdown || null,
+      score: validated.score,
+      breakdown: validated.breakdown,
       status: data.status || 'new',
       notes: data.notes || null,
       discovered_at: existingIdx >= 0 ? (table.rows[existingIdx]['Discovered At'] || nowIso) : nowIso,
@@ -789,6 +802,25 @@ export class LocalAdapter implements DataAdapter {
 
     const updatedContent = MarkdownTableParser.updateTableInContent(content, headers, table.rows);
     this.writeFile('job-candidates.md', updatedContent);
+
+    // Queue integration & assessment flow triggering
+    if (validated.needsAssessment) {
+      await this.addToQueue({
+        url: data.url,
+        company_name: data.company_name,
+        ats_platform: detectAtsPlatform(data.url) || undefined,
+        notes: data.score !== undefined && data.score !== null
+          ? 'Pending assessment flow to generate breakdown and update score'
+          : 'Pending initial rubric assessment',
+      });
+    } else {
+      try {
+        const queueCheck = await this.checkUrlExists(data.url);
+        if (queueCheck.exists && queueCheck.entry?.status === 'pending') {
+          await this.updateQueueStatus(data.url, 'assessed', `Scored ${validated.score !== null ? validated.score : ''}`.trim());
+        }
+      } catch {}
+    }
 
     return candidate;
   }

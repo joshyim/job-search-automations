@@ -601,7 +601,7 @@ if [ "$MODE" = "local" ]; then
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         category TEXT,
-        importance TEXT DEFAULT 'preferred',
+        importance TEXT DEFAULT 'P2',
         notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );

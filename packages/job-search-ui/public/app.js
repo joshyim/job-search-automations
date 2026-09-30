@@ -341,9 +341,8 @@
       }
 
       tbody.innerHTML = candidates.slice(0, 10).map((c) => {
-        const score = c.score !== null && c.score !== undefined ? parseFloat(c.score).toFixed(1) : '-';
-        const scoreNum = parseFloat(c.score) || 0;
-        const scoreClass = scoreNum >= 8.5 ? 'score-high' : scoreNum >= 7.0 ? 'score-mid' : 'score-low';
+        const score = c.score !== null && c.score !== undefined ? `${parseFloat(c.score).toFixed(1)}/100` : '-';
+        const scoreClass = getScoreBadgeClass(c.score);
         const discovered = c.discovered_at ? new Date(c.discovered_at).toLocaleDateString() : '-';
 
         return `
@@ -1066,10 +1065,9 @@
         </td>
         <td>
           <select class="form-select skill-priority-select" data-skill="${escapeHtml(s.name)}" style="width: auto; padding: 4px 8px; font-size: 12px;">
-            <option value="core" ${s.importance === 'core' ? 'selected' : ''}>Core / Required</option>
-            <option value="preferred" ${s.importance === 'preferred' ? 'selected' : ''}>Preferred</option>
-            <option value="P1" ${s.importance === 'P1' ? 'selected' : ''}>P1 (High)</option>
-            <option value="P2" ${s.importance === 'P2' ? 'selected' : ''}>P2 (Medium)</option>
+            ${(s.importance !== 'P1' && s.importance !== 'P2') ? `<option value="${escapeHtml(s.importance || '')}" selected disabled>⚠️ ${escapeHtml(s.importance || 'Unset')} (select to fix)</option>` : ''}
+            <option value="P1" ${s.importance === 'P1' ? 'selected' : ''}>P1 - Must Have</option>
+            <option value="P2" ${s.importance === 'P2' ? 'selected' : ''}>P2 - Preferred</option>
           </select>
         </td>
         <td class="text-xs text-muted">${escapeHtml(s.notes || '-')}</td>
@@ -1349,9 +1347,8 @@
     }
 
     container.innerHTML = state.candidates.map((c) => {
-      const score = c.score !== null && c.score !== undefined ? parseFloat(c.score).toFixed(1) : '-';
-      const scoreNum = parseFloat(c.score) || 0;
-      const scoreClass = scoreNum >= 8.5 ? 'score-high' : scoreNum >= 7.0 ? 'score-mid' : 'score-low';
+      const score = c.score !== null && c.score !== undefined ? `${parseFloat(c.score).toFixed(1)}/100` : '-';
+      const scoreClass = getScoreBadgeClass(c.score);
       const breakdown = c.breakdown || {};
 
       return `
@@ -1387,17 +1384,21 @@
           <div class="candidate-drawer">
             <h5 class="text-xs font-semibold uppercase tracking-wider text-muted mb-3">Scoring Rubric Breakdown</h5>
             <div class="breakdown-bars">
-              ${Object.entries(breakdown).map(([dim, val]) => `
+              ${Object.entries(breakdown).map(([dim, val]) => {
+                const numericVal = parseFloat(val) || 0;
+                const roundedVal = Math.round(numericVal);
+                const clampedVal = Math.min(Math.max(numericVal, 0), 100);
+                return `
                 <div class="bar-item">
                   <div class="bar-header">
                     <span>${escapeHtml(dim)}</span>
-                    <strong>${val}/10</strong>
+                    <strong>${roundedVal}/100</strong>
                   </div>
                   <div class="progress-track">
-                    <div class="progress-fill" style="width: ${Math.min(val * 10, 100)}%;"></div>
+                    <div class="progress-fill" style="width: ${clampedVal}%;"></div>
                   </div>
                 </div>
-              `).join('')}
+              `;}).join('')}
             </div>
 
             ${c.notes ? `
@@ -1724,10 +1725,8 @@
             <div class="form-group">
               <label class="form-label">Priority / Importance</label>
               <select id="add-skill-priority" class="form-select">
-                <option value="core">Core / Required</option>
-                <option value="preferred">Preferred</option>
-                <option value="P1">P1 (High)</option>
-                <option value="P2">P2 (Medium)</option>
+                <option value="P1">P1 - Must Have</option>
+                <option value="P2" selected>P2 - Preferred</option>
               </select>
             </div>
             <div class="form-group">
@@ -1818,6 +1817,19 @@
         });
       });
     }
+  }
+
+  // Rubric Score Badge Color helper (Calibrated 0-100 threshold: PRO-72)
+  // Green: 100 - 80 ('score-high')
+  // Orange: 79 - 50 ('score-mid')
+  // Grey: 49 and below / unrated ('score-low')
+  function getScoreBadgeClass(score) {
+    if (score === null || score === undefined || score === '') return 'score-low';
+    const scoreNum = parseFloat(score);
+    if (isNaN(scoreNum)) return 'score-low';
+    if (scoreNum >= 80) return 'score-high';
+    if (scoreNum >= 50) return 'score-mid';
+    return 'score-low';
   }
 
   // HTML Escape helper

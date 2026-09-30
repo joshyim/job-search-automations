@@ -8,6 +8,7 @@
 
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import net from 'node:net';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,12 +20,32 @@ const __dirname = path.dirname(__filename);
 const UI_DIR = path.resolve(__dirname, '..');
 const REPO_ROOT = path.resolve(UI_DIR, '../..');
 
-const UI_PORT = process.env.UI_PORT || 3847;
-const BASE_URL = `http://localhost:${UI_PORT}`;
+let UI_PORT = process.env.UI_PORT ? parseInt(process.env.UI_PORT, 10) : 3847;
+let BASE_URL = `http://localhost:${UI_PORT}`;
 const CDP_PORT = 9345;
 const CHROME_PATH = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 let cachedToken = process.env.JOB_SEARCH_UI_TOKEN || '';
+
+async function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once('error', () => resolve(false));
+    server.once('listening', () => {
+      server.close(() => resolve(true));
+    });
+    server.listen(port, '127.0.0.1');
+  });
+}
+
+async function getAvailablePort(preferredPort) {
+  let port = preferredPort;
+  while (!(await isPortAvailable(port))) {
+    console.log(`[Port Check] Port ${port} is occupied, checking port ${port + 1}...`);
+    port++;
+  }
+  return port;
+}
 
 async function getAuthToken() {
   if (cachedToken) return cachedToken;
@@ -139,11 +160,23 @@ async function runTests() {
   let testWsDir = null;
 
   // 1. Verify UI server is up or auto-start it
-  try {
-    const health = await fetch(`${BASE_URL}/api/health`).then((r) => r.json());
-    console.log(`✅ UI Server is running at ${BASE_URL} (MCP connected: ${health.mcpConnected})`);
-  } catch (err) {
-    console.log(`[Setup] UI Server not detected at ${BASE_URL}. Auto-starting test server on port ${UI_PORT}...`);
+  let needsSpawn = false;
+  if (!process.env.UI_PORT) {
+    // Port discovery: if default 3847 is occupied, advance to next open port
+    UI_PORT = await getAvailablePort(3847);
+    BASE_URL = `http://localhost:${UI_PORT}`;
+    needsSpawn = true;
+  } else {
+    try {
+      const health = await fetch(`${BASE_URL}/api/health`).then((r) => r.json());
+      console.log(`✅ UI Server is running at ${BASE_URL} (MCP connected: ${health.mcpConnected})`);
+    } catch {
+      needsSpawn = true;
+    }
+  }
+
+  if (needsSpawn) {
+    console.log(`[Setup] Auto-starting isolated test server on port ${UI_PORT}...`);
     testWsDir = path.join(REPO_ROOT, 'tests', 'fixtures', `e2e_ws_${Date.now()}`);
     fs.mkdirSync(path.join(testWsDir, '.job-search'), { recursive: true });
     fs.writeFileSync(
@@ -178,7 +211,7 @@ async function runTests() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
         category TEXT,
-        importance TEXT DEFAULT 'preferred',
+        importance TEXT DEFAULT 'P2',
         notes TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
@@ -226,6 +259,14 @@ async function runTests() {
         summary TEXT,
         details TEXT DEFAULT '{}'
       );
+
+      INSERT OR REPLACE INTO candidates (company_name, job_title, url, location, score, breakdown, status) VALUES
+        ('High Fit Corp', 'Principal Engineer', 'https://example.com/cand-80', 'Remote', 80.0, '{"Title match":80,"Skills match":80,"Experience match":80,"Seniority fit":80}', 'new'),
+        ('Fractional Fit Corp', 'Senior Product Manager', 'https://example.com/cand-fractional', 'Remote', 90.0, '{"Title match":90,"Skills match":87.6,"Experience match":96,"Seniority fit":86.6}', 'new'),
+        ('Mid High Corp', 'Staff Engineer', 'https://example.com/cand-79', 'Remote', 79.0, '{"Title match":79,"Skills match":79,"Experience match":79,"Seniority fit":79}', 'new'),
+        ('Mid Low Corp', 'Senior Engineer', 'https://example.com/cand-50', 'Remote', 50.0, '{"Title match":50,"Skills match":50,"Experience match":50,"Seniority fit":50}', 'new'),
+        ('Low Fit Corp', 'Associate Engineer', 'https://example.com/cand-49', 'Remote', 49.0, '{"Title match":49,"Skills match":49,"Experience match":49,"Seniority fit":49}', 'new'),
+        ('Unrated Corp', 'Intern Engineer', 'https://example.com/cand-null', 'Remote', NULL, NULL, 'new');
     `);
     db.close();
 
@@ -282,6 +323,16 @@ async function runTests() {
     strong_description: 'Strong test description',
   });
   console.log(`  • Created test rubric dimension: "${testRubric}"`);
+
+  // Candidate fixtures for score badge threshold calibration tests (PRO-72)
+  const candidateScores = [
+    { name: 'High Fit Corp', title: 'Principal Engineer', url: 'https://example.com/cand-80', score: 80.0, expectedClass: 'score-high' },
+    { name: 'Fractional Fit Corp', title: 'Senior Product Manager', url: 'https://example.com/cand-fractional', score: 90.0, expectedClass: 'score-high' },
+    { name: 'Mid High Corp', title: 'Staff Engineer', url: 'https://example.com/cand-79', score: 79.0, expectedClass: 'score-mid' },
+    { name: 'Mid Low Corp', title: 'Senior Engineer', url: 'https://example.com/cand-50', score: 50.0, expectedClass: 'score-mid' },
+    { name: 'Low Fit Corp', title: 'Associate Engineer', url: 'https://example.com/cand-49', score: 49.0, expectedClass: 'score-low' },
+    { name: 'Unrated Corp', title: 'Intern Engineer', url: 'https://example.com/cand-null', expectedClass: 'score-low' },
+  ];
 
   // 3. Launch Local Chrome in Headless Mode with CDP
   console.log('\n🌐 Launching Headless Google Chrome...');
@@ -400,7 +451,96 @@ async function runTests() {
     );
     console.log('  • Skill row rendered in DOM');
 
-    // Click the delete button
+    // TEST 2a: Verify Priority Dropdown Standardized Options (P1 - Must Have, P2 - Preferred)
+    console.log('  • Testing Target Skills priority dropdown options...');
+    const priorityOptions = await cdp.eval(`
+      Array.from(document.querySelector('.skill-priority-select[data-skill="${testSkill}"]').options)
+        .map(o => ({ value: o.value, text: o.text.trim(), selected: o.selected }))
+    `);
+    if (priorityOptions.length !== 2) {
+      throw new Error(`Expected exactly 2 priority options, found ${priorityOptions.length}: ${JSON.stringify(priorityOptions)}`);
+    }
+    if (priorityOptions[0].value !== 'P1' || priorityOptions[0].text !== 'P1 - Must Have' || !priorityOptions[0].selected) {
+      throw new Error(`First option mismatch: expected P1 - Must Have selected, got: ${JSON.stringify(priorityOptions[0])}`);
+    }
+    if (priorityOptions[1].value !== 'P2' || priorityOptions[1].text !== 'P2 - Preferred') {
+      throw new Error(`Second option mismatch: expected P2 - Preferred, got: ${JSON.stringify(priorityOptions[1])}`);
+    }
+    console.log('  • Verified 2-tier dropdown options: P1 - Must Have, P2 - Preferred');
+
+    // TEST 2b: Change Priority via Dropdown
+    console.log('  • Testing inline priority change to P2...');
+    await cdp.eval(`
+      (() => {
+        const sel = document.querySelector('.skill-priority-select[data-skill="${testSkill}"]');
+        sel.value = 'P2';
+        sel.dispatchEvent(new Event('change'));
+      })()
+    `);
+    // Allow MCP roundtrip to complete
+    await new Promise((r) => setTimeout(r, 600));
+    const skillsAfterPriorityChange = await callApi('list_skills');
+    const changedSkill = skillsAfterPriorityChange.find((s) => s.name === testSkill);
+    if (!changedSkill || changedSkill.importance !== 'P2') {
+      throw new Error(`Priority update failed! Expected P2, got ${changedSkill?.importance}`);
+    }
+    console.log('  • Verified inline priority change persisted to SQLite backend');
+
+    // TEST 2c: Add Skill Modal Default Priority (P2)
+    console.log('  • Testing Add Skill modal default priority...');
+    await cdp.eval(`
+      Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('Add Skill')).click();
+    `);
+    await cdp.waitFor(`!document.getElementById('modal-backdrop').classList.contains('hidden')`, 4000);
+    const addSkillOptions = await cdp.eval(`
+      Array.from(document.getElementById('add-skill-priority').options)
+        .map(o => ({ value: o.value, text: o.text.trim(), selected: o.selected }))
+    `);
+    if (addSkillOptions.length !== 2) {
+      throw new Error(`Add Skill modal expected 2 options, found ${addSkillOptions.length}`);
+    }
+    const defaultSelected = addSkillOptions.find(o => o.selected);
+    if (!defaultSelected || defaultSelected.value !== 'P2') {
+      throw new Error(`Add Skill modal expected default P2, got: ${JSON.stringify(defaultSelected)}`);
+    }
+    // Close modal
+    await cdp.eval(`document.getElementById('modal-close-btn').click()`);
+    await cdp.waitFor(`document.getElementById('modal-backdrop').classList.contains('hidden')`, 4000);
+
+    // TEST 2d: Unrecognized Value Renders Visibly
+    console.log('  • Testing unrecognized priority value visible rendering...');
+    const resolvedDbPath = testWsDir
+      ? path.join(testWsDir, '.job-search', 'job-search.sqlite')
+      : [
+          process.env.JOB_SEARCH_WORKSPACE && path.join(process.env.JOB_SEARCH_WORKSPACE, '.job-search', 'job-search.sqlite'),
+          path.join(REPO_ROOT, '.job-search', 'job-search.sqlite'),
+        ].filter(Boolean).find((p) => fs.existsSync(p));
+
+    if (resolvedDbPath && fs.existsSync(resolvedDbPath)) {
+      const anomalySkillName = 'TestAnomalySkill';
+      const localDb = new DatabaseSync(resolvedDbPath);
+      localDb.exec(`INSERT INTO skills (name, category, importance) VALUES ('${anomalySkillName}', 'Test', 'unrecognized_tier');`);
+      await cdp.send('Page.reload');
+      await cdp.waitFor(
+        `Boolean(document.querySelector('.skill-priority-select[data-skill="${anomalySkillName}"]'))`,
+        10000
+      );
+      const anomalyOptions = await cdp.eval(`
+        Array.from(document.querySelector('.skill-priority-select[data-skill="${anomalySkillName}"]').options)
+          .map(o => o.text.trim())
+      `);
+      const hasVisibleWarning = anomalyOptions.some((t) => t.includes('unrecognized_tier') && t.includes('⚠️'));
+      localDb.exec(`DELETE FROM skills WHERE name = '${anomalySkillName}';`);
+      localDb.close();
+      if (!hasVisibleWarning) {
+        throw new Error(`Unrecognized priority was not rendered visibly! Options: ${JSON.stringify(anomalyOptions)}`);
+      }
+      console.log('  • Verified unrecognized priority value rendered visibly with warning');
+    } else {
+      console.log('  • Skipping SQLite direct insert (database path not directly accessible)');
+    }
+
+    // Click the delete button on testSkill
     await cdp.eval(`
       document.querySelector('.btn-remove-skill[data-skill="${testSkill}"]').click();
     `);
@@ -608,7 +748,208 @@ async function runTests() {
 
     console.log('✅ [Test 5 PASSED] Mermaid rendering and CSP enforcement verified!');
 
-    console.log('\n🎉 ALL 5 AUTOMATED E2E BROWSER TESTS PASSED SUCCESSFULLY!\n');
+    // ==========================================
+    // TEST 6: Rubric Badge Colors Calibration (PRO-72)
+    // ==========================================
+    console.log('\n🧪 [Test 6] Testing Rubric Badge Colors 0-100 Scale Calibration (PRO-72)...');
+
+    // 1. Check Candidates View
+    await cdp.send('Page.navigate', { url: `${BASE_URL}/#candidates` });
+    await cdp.waitFor(
+      `Boolean(document.querySelector('.candidate-card[data-url="https://example.com/cand-80"]'))`,
+      8000
+    );
+
+    for (const c of candidateScores) {
+      const actualClass = await cdp.eval(`
+        (() => {
+          const card = document.querySelector('.candidate-card[data-url="${c.url}"]');
+          if (!card) return null;
+          const badge = card.querySelector('.score-badge');
+          if (!badge) return null;
+          if (badge.classList.contains('score-high')) return 'score-high';
+          if (badge.classList.contains('score-mid')) return 'score-mid';
+          if (badge.classList.contains('score-low')) return 'score-low';
+          return 'unknown';
+        })()
+      `);
+      if (actualClass !== c.expectedClass) {
+        throw new Error(
+          `Candidates View: Expected badge for "${c.url}" (score ${c.score}) to have class "${c.expectedClass}", got "${actualClass}"`
+        );
+      }
+    }
+    console.log('  • Candidates view: Verified score-high (80), score-mid (79, 50), and score-low (49, null)');
+
+    // 2. Check Dashboard Matched Jobs Table
+    await cdp.send('Page.navigate', { url: `${BASE_URL}/#dashboard` });
+    await cdp.waitFor(
+      `Boolean(document.querySelector('#dashboard-matched-jobs-tbody .score-badge'))`,
+      8000
+    );
+
+    for (const c of candidateScores) {
+      const actualClass = await cdp.eval(`
+        (() => {
+          const select = document.querySelector('.dashboard-status-select[data-url="${c.url}"]');
+          if (!select) return null;
+          const row = select.closest('tr');
+          if (!row) return null;
+          const badge = row.querySelector('.score-badge');
+          if (!badge) return null;
+          if (badge.classList.contains('score-high')) return 'score-high';
+          if (badge.classList.contains('score-mid')) return 'score-mid';
+          if (badge.classList.contains('score-low')) return 'score-low';
+          return 'unknown';
+        })()
+      `);
+      if (actualClass !== c.expectedClass) {
+        throw new Error(
+          `Dashboard View: Expected row badge for "${c.url}" (score ${c.score}) to have class "${c.expectedClass}", got "${actualClass}"`
+        );
+      }
+    }
+    console.log('  • Dashboard matched jobs table: Verified score-high (80, 90), score-mid (79, 50), and score-low (49, null)');
+    console.log('✅ [Test 6 PASSED] Calibrated 0-100 rubric badge thresholds verified!');
+
+    // ==========================================
+    // TEST 7: Candidate Drawer Breakdown Display & Progress Bar (PRO-73)
+    // ==========================================
+    console.log('\n🧪 [Test 7] Testing Candidate Drawer Breakdown Display & Progress Bars (PRO-73)...');
+
+    // 1. Navigate back to Candidates View
+    await cdp.send('Page.navigate', { url: `${BASE_URL}/#candidates` });
+    await cdp.waitFor(
+      `Boolean(document.querySelector('.candidate-card[data-url="https://example.com/cand-fractional"]'))`,
+      8000
+    );
+
+    // 2. Click candidate card to expand drawer
+    await cdp.eval(`
+      (() => {
+        const card = document.querySelector('.candidate-card[data-url="https://example.com/cand-fractional"]');
+        const main = card.querySelector('.candidate-main');
+        if (main) main.click();
+      })()
+    `);
+
+    // 3. Verify drawer is opened
+    await cdp.waitFor(
+      `Boolean(document.querySelector('.candidate-card[data-url="https://example.com/cand-fractional"] .candidate-drawer.open'))`,
+      5000
+    );
+    console.log('  • Candidate drawer successfully opened with .open class');
+
+    // 4. Inspect breakdown items for cand-fractional (Title 90, Skills 87.6, Experience 96, Seniority 86.6)
+    const fractionalBreakdown = await cdp.eval(`
+      (() => {
+        const card = document.querySelector('.candidate-card[data-url="https://example.com/cand-fractional"]');
+        const drawer = card.querySelector('.candidate-drawer');
+        const items = Array.from(drawer.querySelectorAll('.breakdown-bars .bar-item'));
+        return items.map((item) => {
+          const dim = item.querySelector('.bar-header span')?.textContent?.trim();
+          const label = item.querySelector('.bar-header strong')?.textContent?.trim();
+          const fill = item.querySelector('.progress-fill');
+          const widthStyle = fill ? fill.style.width : '';
+          return { dim, label, widthStyle };
+        });
+      })()
+    `);
+
+    const expectedFractional = [
+      { dim: 'Title match', label: '90/100', expectedWidth: '90%' },
+      { dim: 'Skills match', label: '88/100', expectedWidth: '87.6%' },
+      { dim: 'Experience match', label: '96/100', expectedWidth: '96%' },
+      { dim: 'Seniority fit', label: '87/100', expectedWidth: '86.6%' },
+    ];
+
+    if (!Array.isArray(fractionalBreakdown) || fractionalBreakdown.length !== 4) {
+      throw new Error(`Expected 4 breakdown dimensions, found ${fractionalBreakdown?.length}`);
+    }
+
+    for (const exp of expectedFractional) {
+      const actual = fractionalBreakdown.find((b) => b.dim === exp.dim);
+      if (!actual) {
+        throw new Error(`Missing expected breakdown dimension "${exp.dim}"`);
+      }
+      if (actual.label !== exp.label) {
+        throw new Error(
+          `Dimension "${exp.dim}": Expected integer label "${exp.label}", got "${actual.label}"`
+        );
+      }
+      if (actual.label.includes('/10') && !actual.label.includes('/100')) {
+        throw new Error(
+          `Dimension "${exp.dim}": Label contains invalid legacy "/10" notation: "${actual.label}"`
+        );
+      }
+      if (actual.widthStyle !== exp.expectedWidth) {
+        throw new Error(
+          `Dimension "${exp.dim}": Expected progress-fill width "${exp.expectedWidth}", got "${actual.widthStyle}" (width must not be multiplied by 10)`
+        );
+      }
+    }
+    console.log('  • Fractional candidate breakdown: Verified integer labels (90/100, 88/100, 96/100, 87/100) and unscaled progress widths');
+
+    // 5. Check integer candidate (cand-80)
+    await cdp.eval(`
+      (() => {
+        const card = document.querySelector('.candidate-card[data-url="https://example.com/cand-80"]');
+        const main = card.querySelector('.candidate-main');
+        if (main) main.click();
+      })()
+    `);
+    await cdp.waitFor(
+      `Boolean(document.querySelector('.candidate-card[data-url="https://example.com/cand-80"] .candidate-drawer.open'))`,
+      5000
+    );
+
+    const intBreakdown = await cdp.eval(`
+      (() => {
+        const card = document.querySelector('.candidate-card[data-url="https://example.com/cand-80"]');
+        const drawer = card.querySelector('.candidate-drawer');
+        const items = Array.from(drawer.querySelectorAll('.breakdown-bars .bar-item'));
+        return items.map((item) => {
+          const dim = item.querySelector('.bar-header span')?.textContent?.trim();
+          const label = item.querySelector('.bar-header strong')?.textContent?.trim();
+          const fill = item.querySelector('.progress-fill');
+          const widthStyle = fill ? fill.style.width : '';
+          return { dim, label, widthStyle };
+        });
+      })()
+    `);
+
+    for (const b of intBreakdown) {
+      if (b.label !== '80/100') {
+        throw new Error(`Candidate 80 dimension "${b.dim}": Expected label "80/100", got "${b.label}"`);
+      }
+      if (b.widthStyle !== '80%') {
+        throw new Error(`Candidate 80 dimension "${b.dim}": Expected width "80%", got "${b.widthStyle}"`);
+      }
+    }
+    console.log('  • Integer candidate breakdown: Verified "80/100" label and "80%" progress width');
+
+    // 6. Test drawer toggle close
+    await cdp.eval(`
+      (() => {
+        const card = document.querySelector('.candidate-card[data-url="https://example.com/cand-80"]');
+        const main = card.querySelector('.candidate-main');
+        if (main) main.click();
+      })()
+    `);
+    const isClosed = await cdp.eval(`
+      (() => {
+        const card = document.querySelector('.candidate-card[data-url="https://example.com/cand-80"]');
+        const drawer = card.querySelector('.candidate-drawer');
+        return !drawer.classList.contains('open');
+      })()
+    `);
+    if (!isClosed) {
+      throw new Error('Expected candidate drawer to toggle closed when clicked again');
+    }
+    console.log('  • Verified candidate drawer toggles closed on subsequent click');
+    console.log('✅ [Test 7 PASSED] Candidate Drawer breakdown display & progress bars verified!');
+
+    console.log('\n🎉 ALL 7 AUTOMATED E2E BROWSER TESTS PASSED SUCCESSFULLY!\n');
   } finally {
     cdp.close();
     cleanup();

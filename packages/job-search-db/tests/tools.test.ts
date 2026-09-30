@@ -19,7 +19,7 @@ describe('MCP Tools Registration & Invocation', () => {
       updateTitlePattern: vi.fn().mockResolvedValue({ pattern: 'Staff Engineer', type: 'include', level: 'Staff' }),
       removeTitlePattern: vi.fn().mockResolvedValue(true),
       listSkills: vi.fn().mockResolvedValue([{ name: 'TypeScript', category: 'Languages' }]),
-      addSkill: vi.fn().mockResolvedValue({ name: 'TypeScript', category: 'Languages', importance: 'core' }),
+      addSkill: vi.fn().mockResolvedValue({ name: 'TypeScript', category: 'Languages', importance: 'P1' }),
       updateSkill: vi.fn().mockResolvedValue({ name: 'TypeScript', importance: 'P1' }),
       removeSkill: vi.fn().mockResolvedValue(true),
       getScoringRubric: vi.fn().mockResolvedValue([{ dimension: 'Title match', weight: 25 }]),
@@ -220,7 +220,7 @@ describe('MCP Tools Registration & Invocation', () => {
       level: 'Staff',
     });
 
-    // add_skill
+    // add_skill - legacy 'core' normalizes to 'P1'
     const addSkillTool = (server as any)._registeredTools['add_skill'];
     await addSkillTool.handler({
       name: 'TypeScript',
@@ -230,10 +230,41 @@ describe('MCP Tools Registration & Invocation', () => {
     expect(adapter.addSkill).toHaveBeenCalledWith({
       name: 'TypeScript',
       category: 'Languages',
-      importance: 'core',
+      importance: 'P1',
     });
 
-    // update_skill
+    // add_skill - legacy 'preferred' normalizes to 'P2'
+    await addSkillTool.handler({
+      name: 'Python',
+      category: 'Languages',
+      importance: 'preferred',
+    });
+    expect(adapter.addSkill).toHaveBeenCalledWith({
+      name: 'Python',
+      category: 'Languages',
+      importance: 'P2',
+    });
+
+    // add_skill - valid 'P2'
+    await addSkillTool.handler({
+      name: 'SQL',
+      category: 'Languages',
+      importance: 'P2',
+    });
+    expect(adapter.addSkill).toHaveBeenCalledWith({
+      name: 'SQL',
+      category: 'Languages',
+      importance: 'P2',
+    });
+
+    // add_skill - rejects unknown value 'P3'
+    const errRes = await addSkillTool.handler({
+      name: 'InvalidSkill',
+      importance: 'P3',
+    });
+    expect(errRes.isError).toBe(true);
+
+    // update_skill - valid 'P1'
     const updateSkillTool = (server as any)._registeredTools['update_skill'];
     await updateSkillTool.handler({
       name: 'TypeScript',
@@ -242,6 +273,22 @@ describe('MCP Tools Registration & Invocation', () => {
     expect(adapter.updateSkill).toHaveBeenCalledWith('TypeScript', {
       importance: 'P1',
     });
+
+    // update_skill - legacy 'preferred' normalizes to 'P2'
+    await updateSkillTool.handler({
+      name: 'TypeScript',
+      importance: 'preferred',
+    });
+    expect(adapter.updateSkill).toHaveBeenCalledWith('TypeScript', {
+      importance: 'P2',
+    });
+
+    // update_skill - rejects unknown value
+    const updateErrRes = await updateSkillTool.handler({
+      name: 'TypeScript',
+      importance: 'invalid-tier',
+    });
+    expect(updateErrRes.isError).toBe(true);
 
     // remove_skill
     const removeSkillTool = (server as any)._registeredTools['remove_skill'];

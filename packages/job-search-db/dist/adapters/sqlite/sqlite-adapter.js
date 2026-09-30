@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { DEFAULT_RUBRIC, SQLITE_SCHEMA } from './schema.js';
 import { detectAtsPlatform, normalizeAtsPlatform } from '../../ats.js';
+import { validateCandidateScoreAndBreakdown, computeWeightedRubricScore, roundHalfUp } from '../../scoring.js';
 export class SqliteAdapter {
     dbPath;
     resumePath;
@@ -78,6 +79,98 @@ export class SqliteAdapter {
             const insertRubric = this.db.prepare('INSERT INTO scoring_rubric (dimension, weight, poor_description, moderate_description, strong_description) VALUES (?, ?, ?, ?, ?)');
             for (const item of DEFAULT_RUBRIC) {
                 insertRubric.run(item.dimension, item.weight, item.poor_description, item.moderate_description, item.strong_description);
+            }
+        }
+        // Non-destructive migration for legacy skill importance values ('core' -> 'P1', 'preferred' -> 'P2')
+        const legacySkills = this.db.prepare("SELECT COUNT(*) as count FROM skills WHERE LOWER(importance) IN ('core', 'preferred')").get()?.count || 0;
+        if (legacySkills > 0) {
+            const p1Res = this.db.prepare("UPDATE skills SET importance = 'P1' WHERE LOWER(importance) = 'core'").run();
+            const p2Res = this.db.prepare("UPDATE skills SET importance = 'P2' WHERE LOWER(importance) = 'preferred'").run();
+            const totalMigrated = (Number(p1Res.changes) || 0) + (Number(p2Res.changes) || 0);
+            const now = new Date().toISOString();
+            this.db.prepare(`
+        INSERT INTO run_logs (timestamp, mode, companies_processed, urls_queued, candidates_scored, summary, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(now, 'local', '[]', 0, 0, `Migrated ${totalMigrated} legacy skill importance records to P1/P2`, JSON.stringify({
+                migration: 'skills_importance_p1_p2',
+                core_to_p1: Number(p1Res.changes) || 0,
+                preferred_to_p2: Number(p2Res.changes) || 0,
+            }));
+        }
+        // Non-destructive auditable migration for legacy 1-5 candidate rubric breakdowns (PRO-71)
+        const candidatesWithBreakdown = this.db.prepare('SELECT id, job_title, company_name, url, score, breakdown FROM candidates WHERE breakdown IS NOT NULL').all();
+        const legacyOneToFive = [];
+        const rubricDimensions = await this.getScoringRubric();
+        for (const c of candidatesWithBreakdown) {
+            try {
+                const b = typeof c.breakdown === 'string' ? JSON.parse(c.breakdown) : c.breakdown;
+                if (!b || typeof b !== 'object' || Array.isArray(b))
+                    continue;
+                const vals = Object.values(b);
+                if (vals.length > 0 && vals.every(v => typeof v === 'number' && Number.isFinite(v) && v > 0 && v <= 5.0)) {
+                    // Unambiguously 1-5 rubric scale
+                    const newBreakdown = {};
+                    for (const [k, v] of Object.entries(b)) {
+                        newBreakdown[k] = roundHalfUp((Number(v) / 5.0) * 100, 1);
+                    }
+                    const { expectedScore } = computeWeightedRubricScore(newBreakdown, rubricDimensions);
+                    legacyOneToFive.push({
+                        id: c.id,
+                        url: c.url,
+                        oldScore: c.score,
+                        newScore: expectedScore,
+                        oldBreakdown: b,
+                        newBreakdown,
+                    });
+                }
+            }
+            catch { }
+        }
+        if (legacyOneToFive.length > 0) {
+            const updateCandidate = this.db.prepare('UPDATE candidates SET score = ?, breakdown = ?, updated_at = ? WHERE id = ?');
+            const now = new Date().toISOString();
+            for (const item of legacyOneToFive) {
+                updateCandidate.run(item.newScore, JSON.stringify(item.newBreakdown), now, item.id);
+            }
+            this.db.prepare(`
+        INSERT INTO run_logs (timestamp, mode, companies_processed, urls_queued, candidates_scored, summary, details)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(now, 'local', '[]', 0, legacyOneToFive.length, `Migrated ${legacyOneToFive.length} legacy 1-5 candidate rubric breakdowns to canonical 0-100 percentage scale`, JSON.stringify({
+                migration: 'historical_1_5_to_0_100',
+                records_converted: legacyOneToFive.length,
+                changes: legacyOneToFive.map(i => ({ id: i.id, url: i.url, oldScore: i.oldScore, newScore: i.newScore })),
+            }));
+        }
+        // Enroll historical candidates without breakdowns into crawl_queue with status 'pending' (PRO-71)
+        const unscoredCandidates = this.db.prepare('SELECT id, company_name, url FROM candidates WHERE breakdown IS NULL').all();
+        if (unscoredCandidates.length > 0) {
+            const checkQueue = this.db.prepare('SELECT id, status FROM crawl_queue WHERE LOWER(url) = LOWER(?)');
+            const insertQueue = this.db.prepare(`
+        INSERT INTO crawl_queue (url, company_name, ats_platform, status, notes, created_at, updated_at)
+        VALUES (?, ?, ?, 'pending', ?, ?, ?)
+      `);
+            const updateQueue = this.db.prepare('UPDATE crawl_queue SET status = ?, notes = ?, updated_at = ? WHERE id = ?');
+            const now = new Date().toISOString();
+            let queuedCount = 0;
+            for (const c of unscoredCandidates) {
+                const q = checkQueue.get(c.url);
+                if (!q) {
+                    insertQueue.run(c.url, c.company_name, detectAtsPlatform(c.url) || null, 'Pending assessment flow to generate canonical rubric breakdown and score', now, now);
+                    queuedCount++;
+                }
+                else if (q.status !== 'pending') {
+                    updateQueue.run('pending', 'Pending assessment flow to generate canonical rubric breakdown and score', now, q.id);
+                    queuedCount++;
+                }
+            }
+            if (queuedCount > 0) {
+                this.db.prepare(`
+          INSERT INTO run_logs (timestamp, mode, companies_processed, urls_queued, candidates_scored, summary, details)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(now, 'local', '[]', queuedCount, 0, `Enrolled ${queuedCount} candidates without breakdowns into crawl queue for fresh assessment flow`, JSON.stringify({
+                    migration: 'enroll_unscored_into_assessment_flow',
+                    records_enrolled: queuedCount,
+                }));
             }
         }
     }
@@ -269,18 +362,29 @@ export class SqliteAdapter {
         query += ' ORDER BY id ASC';
         return db.prepare(query).all(...params);
     }
+    normalizeSkillImportance(importance) {
+        if (!importance)
+            return 'P2';
+        const lower = importance.trim().toLowerCase();
+        if (lower === 'core' || lower === 'p1')
+            return 'P1';
+        if (lower === 'preferred' || lower === 'p2')
+            return 'P2';
+        return importance.trim();
+    }
     async addSkill(data) {
         const db = this.getDatabase();
         const existing = db.prepare('SELECT id, name, category, importance, notes, created_at FROM skills WHERE LOWER(name) = LOWER(?)').get(data.name);
         if (existing) {
             const cat = data.category !== undefined ? data.category : existing.category;
-            const imp = data.importance !== undefined ? data.importance : existing.importance;
+            const imp = data.importance !== undefined ? this.normalizeSkillImportance(data.importance) : existing.importance;
             const notes = data.notes !== undefined ? data.notes : existing.notes;
             db.prepare('UPDATE skills SET category = ?, importance = ?, notes = ? WHERE id = ?').run(cat ?? null, imp ?? null, notes ?? null, existing.id);
             return db.prepare('SELECT id, name, category, importance, notes, created_at FROM skills WHERE id = ?').get(existing.id);
         }
         const now = new Date().toISOString();
-        const result = db.prepare('INSERT INTO skills (name, category, importance, notes, created_at) VALUES (?, ?, ?, ?, ?)').run(data.name, data.category ?? null, data.importance ?? 'preferred', data.notes ?? null, now);
+        const imp = this.normalizeSkillImportance(data.importance);
+        const result = db.prepare('INSERT INTO skills (name, category, importance, notes, created_at) VALUES (?, ?, ?, ?, ?)').run(data.name, data.category ?? null, imp, data.notes ?? null, now);
         return db.prepare('SELECT id, name, category, importance, notes, created_at FROM skills WHERE id = ?').get(result.lastInsertRowid);
     }
     async updateSkill(name, updates) {
@@ -291,7 +395,7 @@ export class SqliteAdapter {
         }
         const newName = updates.name !== undefined ? updates.name : existing.name;
         const cat = updates.category !== undefined ? updates.category : existing.category;
-        const imp = updates.importance !== undefined ? updates.importance : existing.importance;
+        const imp = updates.importance !== undefined ? this.normalizeSkillImportance(updates.importance) : existing.importance;
         const notes = updates.notes !== undefined ? updates.notes : existing.notes;
         db.prepare('UPDATE skills SET name = ?, category = ?, importance = ?, notes = ? WHERE id = ?').run(newName, cat ?? null, imp ?? null, notes ?? null, existing.id);
         return db.prepare('SELECT id, name, category, importance, notes, created_at FROM skills WHERE id = ?').get(existing.id);
@@ -432,26 +536,51 @@ export class SqliteAdapter {
     // --- Candidates ---
     async addCandidate(data) {
         const db = this.getDatabase();
+        const rubric = await this.getScoringRubric();
+        const validated = validateCandidateScoreAndBreakdown(data, rubric);
         const existing = db.prepare('SELECT id FROM candidates WHERE LOWER(url) = LOWER(?)').get(data.url);
-        const breakdownJson = data.breakdown ? JSON.stringify(data.breakdown) : null;
+        const breakdownJson = validated.breakdown ? JSON.stringify(validated.breakdown) : null;
         const now = new Date().toISOString();
+        let candidateRowId;
         if (existing) {
             db.prepare(`
         UPDATE candidates
         SET company_name = ?, job_title = ?, location = ?, score = ?, breakdown = ?, status = ?, notes = ?, updated_at = ?
         WHERE id = ?
-      `).run(data.company_name, data.job_title, data.location ?? null, data.score ?? null, breakdownJson, data.status ?? 'new', data.notes ?? null, now, existing.id);
-            const row = db.prepare('SELECT id, company_name, job_title, url, location, score, breakdown, status, notes, discovered_at, applied_at, updated_at FROM candidates WHERE id = ?').get(existing.id);
-            return {
-                ...row,
-                breakdown: row.breakdown ? JSON.parse(row.breakdown) : null,
-            };
+      `).run(data.company_name, data.job_title, data.location ?? null, validated.score, breakdownJson, data.status ?? 'new', data.notes ?? null, now, existing.id);
+            candidateRowId = existing.id;
         }
-        const result = db.prepare(`
-      INSERT INTO candidates (company_name, job_title, url, location, score, breakdown, status, notes, discovered_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(data.company_name, data.job_title, data.url, data.location ?? null, data.score ?? null, breakdownJson, data.status ?? 'new', data.notes ?? null, now, now);
-        const row = db.prepare('SELECT id, company_name, job_title, url, location, score, breakdown, status, notes, discovered_at, applied_at, updated_at FROM candidates WHERE id = ?').get(result.lastInsertRowid);
+        else {
+            const result = db.prepare(`
+        INSERT INTO candidates (company_name, job_title, url, location, score, breakdown, status, notes, discovered_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(data.company_name, data.job_title, data.url, data.location ?? null, validated.score, breakdownJson, data.status ?? 'new', data.notes ?? null, now, now);
+            candidateRowId = result.lastInsertRowid;
+        }
+        // Handle queue integration & assessment flow triggering
+        const existingQueue = db.prepare('SELECT id, status FROM crawl_queue WHERE LOWER(url) = LOWER(?)').get(data.url);
+        if (validated.needsAssessment) {
+            // Trigger assessment flow by ensuring entry is pending in crawl_queue
+            const note = data.score !== undefined && data.score !== null
+                ? 'Pending assessment flow to generate breakdown and update score'
+                : 'Pending initial rubric assessment';
+            if (!existingQueue) {
+                db.prepare(`
+          INSERT INTO crawl_queue (url, company_name, ats_platform, status, notes, created_at, updated_at)
+          VALUES (?, ?, ?, 'pending', ?, ?, ?)
+        `).run(data.url, data.company_name, detectAtsPlatform(data.url) || null, note, now, now);
+            }
+            else if (existingQueue.status !== 'pending') {
+                db.prepare('UPDATE crawl_queue SET status = ?, notes = ?, updated_at = ? WHERE id = ?').run('pending', note, now, existingQueue.id);
+            }
+        }
+        else {
+            // Assessment completed with full breakdown: mark queue entry assessed if pending
+            if (existingQueue && existingQueue.status === 'pending') {
+                db.prepare('UPDATE crawl_queue SET status = ?, notes = ?, updated_at = ? WHERE id = ?').run('assessed', `Scored ${validated.score !== null ? validated.score : ''}`.trim(), now, existingQueue.id);
+            }
+        }
+        const row = db.prepare('SELECT id, company_name, job_title, url, location, score, breakdown, status, notes, discovered_at, applied_at, updated_at FROM candidates WHERE id = ?').get(candidateRowId);
         return {
             ...row,
             breakdown: row.breakdown ? JSON.parse(row.breakdown) : null,

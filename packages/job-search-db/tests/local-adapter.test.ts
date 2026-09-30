@@ -142,21 +142,33 @@ describe('LocalAdapter', () => {
       expect(remaining[0].level).toBe('Principal');
     });
 
-    it('adds, lists, updates, and removes skills', async () => {
-      await adapter.addSkill({
+    it('adds, lists, updates, and removes skills with P1/P2 standardization', async () => {
+      // Default importance should be P2
+      const defaultSkill = await adapter.addSkill({
+        name: 'Bash',
+        category: 'Shell',
+      });
+      expect(defaultSkill.importance).toBe('P2');
+
+      // Adding with legacy 'core' normalizes to 'P1'
+      const skill1 = await adapter.addSkill({
         name: 'TypeScript',
         category: 'Languages',
         importance: 'core',
         notes: 'Primary',
       });
-      await adapter.addSkill({
+      expect(skill1.importance).toBe('P1');
+
+      // Adding with legacy 'preferred' normalizes to 'P2'
+      const skill2 = await adapter.addSkill({
         name: 'Postgres',
         category: 'Databases',
         importance: 'preferred',
       });
+      expect(skill2.importance).toBe('P2');
 
       const skills = await adapter.listSkills();
-      expect(skills).toHaveLength(2);
+      expect(skills).toHaveLength(3);
       expect(skills.map(s => s.name)).toContain('TypeScript');
 
       // Update skill
@@ -172,8 +184,8 @@ describe('LocalAdapter', () => {
       expect(removed).toBe(true);
 
       const remaining = await adapter.listSkills();
-      expect(remaining).toHaveLength(1);
-      expect(remaining[0].name).toBe('TypeScript');
+      expect(remaining).toHaveLength(2);
+      expect(remaining.map(s => s.name)).toContain('TypeScript');
     });
 
     it('lists skills by category', async () => {
@@ -286,8 +298,13 @@ describe('LocalAdapter', () => {
         job_title: 'Staff Engineer',
         url: 'https://stripe.com/jobs/staff',
         location: 'Remote, US',
-        score: 9.2,
-        breakdown: { title: 9, skills: 9.5 },
+        score: 92,
+        breakdown: {
+          'Title match': 92,
+          'Skills match': 92,
+          'Experience match': 92,
+          'Seniority fit': 92,
+        },
         status: 'new',
         notes: 'Great match',
       });
@@ -297,13 +314,18 @@ describe('LocalAdapter', () => {
         job_title: 'Senior Engineer',
         url: 'https://datadog.com/jobs/senior',
         location: 'New York, NY',
-        score: 7.5,
-        breakdown: { title: 7, skills: 8 },
+        score: 75,
+        breakdown: {
+          'Title match': 75,
+          'Skills match': 75,
+          'Experience match': 75,
+          'Seniority fit': 75,
+        },
         status: 'new',
       });
 
       // Get candidates sorted by score descending
-      const candidates = await adapter.getCandidates({ min_score: 8.0 });
+      const candidates = await adapter.getCandidates({ min_score: 80.0 });
       expect(candidates).toHaveLength(1);
       expect(candidates[0].company_name).toBe('Stripe');
 

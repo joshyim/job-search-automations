@@ -4,3 +4,4 @@ import { z } from 'zod';
  * Rejects non-HTTP schemes (e.g. file:, javascript:, data:, ftp:) and invalid URL strings.
  */
 export declare const httpUrlSchema: z.ZodEffects<z.ZodString, string, string>;
+export * from '../scoring.js';
