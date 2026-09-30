@@ -241,7 +241,7 @@ class JobSearchUIServer {
     this.mcpClient = new Client(
       {
         name: 'job-search-web-ui',
-        version: '0.1.0',
+        version: '0.1.2',
       },
       {
         capabilities: {},

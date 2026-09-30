@@ -28,7 +28,7 @@ async function main(): Promise<void> {
   // Create MCP Server
   const server = new McpServer({
     name: 'job-search-db',
-    version: '0.1.0',
+    version: '0.1.2',
   });
 
   // Register all tools

@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "job-search-automations",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "Skill-based job search pipeline with local SQLite storage (and optional Neon Cloud PostgreSQL) communicating via MCP.",
   "license": "MIT",
   "author": {
